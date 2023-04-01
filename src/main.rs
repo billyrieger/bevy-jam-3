@@ -1,3 +1,5 @@
+use bevy::prelude::*;
+
 fn main() {
-    println!("Hello, world!");
+    App::new().add_plugin(bevy_jam_3::GamePlugin).run();
 }
