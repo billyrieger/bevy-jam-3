@@ -2,7 +2,31 @@
 name = "bevy-jam-3"
 version = "0.1.0"
 edition = "2021"
+publish = false
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+bevy = { version = "0.10.0", default-features = false, features = [ "animation", "bevy_asset", "bevy_core_pipeline", "bevy_render", "bevy_scene", "bevy_sprite", "bevy_text", "bevy_ui", "bevy_winit", "filesystem_watcher", "serialize", "png" ]}
+bevy_asset_loader = "0.16.0"
+bevy_ecs_ldtk = { version = "0.6.0", features = ["atlas"] }
+bevy_embedded_assets = "0.7.0"
+bevy_kira_audio = "0.15.0"
+bevy_particle_systems = "0.9.0"
+bevy_rapier2d = { version = "0.21.0", features = ["wasm-bindgen"] }
+bevy_tweening = "0.7.0"
+spew = "0.2.1"
+
+[features]
+default = ["dev"]
+dev = ["bevy/x11", "bevy/dynamic_linking"]
+wasm = []
+
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 3
+
+[patch.crates-io]
+bevy_particle_systems = { version = "0.9.0", git = "https://github.com/abnormalbrain/bevy_particle_systems", rev = "8cf6d07" }
