@@ -1,4 +1,5 @@
 pub mod loading;
+pub mod menu;
 
 use bevy::prelude::*;
 use bevy_embedded_assets::EmbeddedAssetPlugin;
@@ -18,19 +19,31 @@ pub struct GamePlugin;
 
 impl Plugin for GamePlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins(
-            DefaultPlugins
-                .build()
-                .set(WindowPlugin {
-                    primary_window: Some(Window {
-                        resolution: (WIDTH, HEIGHT).into(),
-                        canvas: Some("#bevy".to_owned()),
+        app.add_state::<GameState>()
+            .add_plugins(
+                DefaultPlugins
+                    .build()
+                    .set(WindowPlugin {
+                        primary_window: Some(Window {
+                            resolution: (WIDTH, HEIGHT).into(),
+                            canvas: Some("#bevy".to_owned()),
+                            ..default()
+                        }),
                         ..default()
-                    }),
-                    ..default()
-                })
-                .add_before::<AssetPlugin, _>(EmbeddedAssetPlugin),
-        )
-        .add_plugin(loading::LoadingPlugin);
+                    })
+                    .add_before::<AssetPlugin, _>(EmbeddedAssetPlugin),
+            )
+            .add_plugin(loading::LoadingPlugin)
+            .add_plugin(menu::MenuPlugin)
+            .add_system(setup.on_startup());
     }
+}
+
+// ==== COMPONENTS ====
+
+#[derive(Component)]
+pub struct MainCamera;
+
+fn setup(mut commands: Commands) {
+    commands.spawn((MainCamera, Camera2dBundle::default()));
 }
