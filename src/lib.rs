@@ -1,6 +1,7 @@
 pub mod level;
 pub mod loading;
 pub mod menu;
+pub mod player;
 
 use bevy::prelude::*;
 use bevy_embedded_assets::EmbeddedAssetPlugin;
@@ -37,6 +38,7 @@ impl Plugin for GamePlugin {
             .add_plugin(loading::LoadingPlugin)
             .add_plugin(menu::MenuPlugin)
             .add_plugin(level::LevelPlugin)
+            .add_plugin(player::PlayerPlugin)
             .add_system(setup.on_startup());
     }
 }
