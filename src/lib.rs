@@ -3,8 +3,10 @@ pub mod loading;
 pub mod menu;
 pub mod player;
 
-use bevy::prelude::*;
+use bevy::{ecs::{archetype::Archetypes, component::ComponentId}, prelude::*};
+use bevy_ecs_ldtk::prelude::*;
 use bevy_embedded_assets::EmbeddedAssetPlugin;
+use bevy_rapier2d::prelude::*;
 
 pub const WIDTH: f32 = 640.;
 pub const HEIGHT: f32 = 480.;
@@ -35,6 +37,22 @@ impl Plugin for GamePlugin {
                     })
                     .add_before::<AssetPlugin, _>(EmbeddedAssetPlugin),
             )
+            // third-party plugins
+            .add_plugin(LdtkPlugin)
+            .add_plugin(RapierPhysicsPlugin::<NoUserData>::default())
+            .add_plugin(RapierDebugRenderPlugin::default())
+            .insert_resource(LdtkSettings {
+                level_spawn_behavior: LevelSpawnBehavior::UseWorldTranslation {
+                    load_level_neighbors: false,
+                },
+                ..default()
+            })
+            .insert_resource(RapierConfiguration {
+                gravity: Vec2::ZERO,
+                ..default()
+            })
+            .configure_set(LdtkSystemSet::ProcessApi.before(PhysicsSet::SyncBackend))
+            // game plugins
             .add_plugin(loading::LoadingPlugin)
             .add_plugin(menu::MenuPlugin)
             .add_plugin(level::LevelPlugin)
@@ -43,7 +61,21 @@ impl Plugin for GamePlugin {
     }
 }
 
+pub fn get_components_for_entity<'a>(
+    entity: &Entity,
+    archetypes: &'a Archetypes,
+) -> Option<impl Iterator<Item = ComponentId> + 'a> {
+    for archetype in archetypes.iter() {
+        if archetype.entities().iter().any(|e| e.entity() == *entity) {
+            return Some(archetype.components());
+        }
+    }
+    None
+}
+
+// ====================
 // ==== COMPONENTS ====
+// ====================
 
 #[derive(Component)]
 pub struct MainCamera;

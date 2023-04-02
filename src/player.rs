@@ -1,6 +1,7 @@
 use crate::GameState;
 use bevy::prelude::*;
 use bevy_ecs_ldtk::prelude::*;
+use bevy_rapier2d::prelude::*;
 use leafwing_input_manager::prelude::*;
 
 pub struct PlayerPlugin;
@@ -37,6 +38,9 @@ pub struct PlayerBundle {
     #[with(player_input_manager)]
     #[bundle]
     input_manager: InputManagerBundle<PlayerAction>,
+    #[with(player_physics)]
+    #[bundle]
+    physics: (RigidBody, Collider, ActiveEvents),
 }
 
 fn player_input_manager(_: &EntityInstance) -> InputManagerBundle<PlayerAction> {
@@ -50,6 +54,10 @@ fn player_input_manager(_: &EntityInstance) -> InputManagerBundle<PlayerAction> 
         ]),
         ..default()
     }
+}
+
+fn player_physics(_: &EntityInstance) -> (RigidBody, Collider, ActiveEvents) {
+    (RigidBody::Dynamic, Collider::ball(8.), ActiveEvents::COLLISION_EVENTS)
 }
 
 // =================
