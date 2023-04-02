@@ -10,17 +10,37 @@ impl Plugin for PlayerPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugin(InputManagerPlugin::<PlayerAction>::default())
             .register_ldtk_entity::<PlayerBundle>("Player")
-            .add_system(player_movement.in_set(OnUpdate(GameState::InGame)));
+            .add_systems(
+                (add_components_to_primary_player, player_movement)
+                    .in_set(OnUpdate(GameState::InGame)),
+            );
     }
 }
 
 #[derive(Actionlike, PartialEq, Eq, Clone, Copy, Hash, Debug)]
 enum PlayerAction {
-    MoveLeft,
-    MoveRight,
     MoveUp,
     MoveDown,
+    MoveLeft,
+    MoveRight,
 }
+
+// #[derive(Clone, Copy, PartialEq, Eq)]
+// enum Direction {
+//     Up,
+//     Down,
+//     Left,
+//     Right,
+// }
+
+// ================
+// ==== EVENTS ====
+// ================
+
+// struct MovePlayerEvent {
+//     player: Entity,
+//     direction: Direction,
+// }
 
 // ====================
 // ==== COMPONENTS ====
@@ -29,45 +49,63 @@ enum PlayerAction {
 #[derive(Component, Default)]
 pub struct Player;
 
+#[derive(Component, Default)]
+pub struct PrimaryPlayer;
+
 #[derive(Bundle, LdtkEntity)]
 pub struct PlayerBundle {
     player: Player,
     #[sprite_sheet_bundle]
     #[bundle]
     sprite_sheet: SpriteSheetBundle,
-    #[with(player_input_manager)]
-    #[bundle]
-    input_manager: InputManagerBundle<PlayerAction>,
     #[with(player_physics)]
     #[bundle]
     physics: (RigidBody, Collider, ActiveEvents),
-}
-
-fn player_input_manager(_: &EntityInstance) -> InputManagerBundle<PlayerAction> {
-    InputManagerBundle {
-        action_state: ActionState::default(),
-        input_map: InputMap::new([
-            (KeyCode::Left, PlayerAction::MoveLeft),
-            (KeyCode::Right, PlayerAction::MoveRight),
-            (KeyCode::Up, PlayerAction::MoveUp),
-            (KeyCode::Down, PlayerAction::MoveDown),
-        ]),
-        ..default()
-    }
+    #[from_entity_instance]
+    entity_instance: EntityInstance,
 }
 
 fn player_physics(_: &EntityInstance) -> (RigidBody, Collider, ActiveEvents) {
-    (RigidBody::Dynamic, Collider::ball(8.), ActiveEvents::COLLISION_EVENTS)
+    (
+        RigidBody::Dynamic,
+        Collider::ball(8.),
+        ActiveEvents::COLLISION_EVENTS,
+    )
 }
 
 // =================
 // ==== SYSTEMS ====
 // =================
 
+fn add_components_to_primary_player(
+    mut commands: Commands,
+    player_query: Query<(Entity, &EntityInstance), Added<Player>>,
+) {
+    for (entity, instance) in &player_query {
+        if instance.field_instances.iter().any(|field| {
+            field.identifier == "Primary" && matches!(field.value, FieldValue::Bool(true))
+        }) {
+            commands
+                .entity(entity)
+                .insert(PrimaryPlayer)
+                .insert(InputManagerBundle {
+                    action_state: ActionState::default(),
+                    input_map: InputMap::new([
+                        (KeyCode::Left, PlayerAction::MoveLeft),
+                        (KeyCode::Right, PlayerAction::MoveRight),
+                        (KeyCode::Up, PlayerAction::MoveUp),
+                        (KeyCode::Down, PlayerAction::MoveDown),
+                    ]),
+                    ..default()
+                });
+        }
+    }
+}
+
 fn player_movement(
     mut player_query: Query<(&ActionState<PlayerAction>, &mut Transform), With<Player>>,
 ) {
-    if let Ok((action_state, mut transform)) = player_query.get_single_mut() {
+    for (action_state, mut transform) in &mut player_query {
         if action_state.just_pressed(PlayerAction::MoveUp) {
             transform.translation += Vec3::Y * 32.;
         }

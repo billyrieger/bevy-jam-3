@@ -10,6 +10,7 @@ publish = false
 bevy = { version = "0.10.0", default-features = false, features = [ "animation", "bevy_asset", "bevy_core_pipeline", "bevy_render", "bevy_scene", "bevy_sprite", "bevy_text", "bevy_ui", "bevy_winit", "filesystem_watcher", "serialize", "png" ]}
 bevy_asset_loader = "0.16.0"
 bevy_ecs_ldtk = { version = "0.6.0", features = ["atlas"] }
+bevy_ecs_tilemap = "0.10.0"
 bevy_embedded_assets = "0.7.0"
 bevy_kira_audio = "0.15.0"
 bevy_particle_systems = "0.9.0"

@@ -287,6 +287,7 @@ dependencies = [
  "bevy",
  "bevy_asset_loader",
  "bevy_ecs_ldtk",
+ "bevy_ecs_tilemap",
  "bevy_embedded_assets",
  "bevy_kira_audio",
  "bevy_particle_systems",

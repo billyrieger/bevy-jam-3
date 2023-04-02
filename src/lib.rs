@@ -3,13 +3,19 @@ pub mod loading;
 pub mod menu;
 pub mod player;
 
-use bevy::{ecs::{archetype::Archetypes, component::ComponentId}, prelude::*};
+use bevy::{
+    ecs::{archetype::Archetypes, component::ComponentId},
+    prelude::*,
+};
 use bevy_ecs_ldtk::prelude::*;
 use bevy_embedded_assets::EmbeddedAssetPlugin;
 use bevy_rapier2d::prelude::*;
 
-pub const WIDTH: f32 = 640.;
-pub const HEIGHT: f32 = 480.;
+pub const WIDTH: i32 = 640;
+pub const HEIGHT: i32 = 480;
+pub const GRID_SIZE: i32 = 32;
+pub const GRID_WIDTH: i32 = WIDTH / GRID_SIZE;
+pub const GRID_HEIGHT: i32 = HEIGHT / GRID_SIZE;
 
 #[derive(States, Clone, Default, Debug, PartialEq, Eq, Hash)]
 enum GameState {
@@ -29,7 +35,7 @@ impl Plugin for GamePlugin {
                     .build()
                     .set(WindowPlugin {
                         primary_window: Some(Window {
-                            resolution: (WIDTH, HEIGHT).into(),
+                            resolution: (WIDTH as f32, HEIGHT as f32).into(),
                             canvas: Some("#bevy".to_owned()),
                             ..default()
                         }),
