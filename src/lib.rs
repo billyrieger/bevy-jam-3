@@ -1,11 +1,12 @@
+pub mod level;
 pub mod loading;
 pub mod menu;
 
 use bevy::prelude::*;
 use bevy_embedded_assets::EmbeddedAssetPlugin;
 
-pub const WIDTH: f32 = 720.;
-pub const HEIGHT: f32 = 576.;
+pub const WIDTH: f32 = 640.;
+pub const HEIGHT: f32 = 480.;
 
 #[derive(States, Clone, Default, Debug, PartialEq, Eq, Hash)]
 enum GameState {
@@ -35,6 +36,7 @@ impl Plugin for GamePlugin {
             )
             .add_plugin(loading::LoadingPlugin)
             .add_plugin(menu::MenuPlugin)
+            .add_plugin(level::LevelPlugin)
             .add_system(setup.on_startup());
     }
 }

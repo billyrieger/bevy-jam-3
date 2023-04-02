@@ -15,8 +15,8 @@ impl Plugin for LoadingPlugin {
 
 #[derive(Resource, AssetCollection)]
 pub struct GameAssets {
-    // #[asset(path = "levels/beside_yourself.ldtk")]
-    // pub levels: Handle<bevy_ecs_ldtk::LdtkAsset>,
+    #[asset(path = "levels/beside_yourself.ldtk")]
+    pub levels: Handle<bevy_ecs_ldtk::LdtkAsset>,
     #[asset(path = "fonts/Kenney Pixel Square.ttf")]
     pub main_font: Handle<Font>,
 }
