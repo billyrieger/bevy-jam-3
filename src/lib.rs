@@ -39,7 +39,7 @@ impl Plugin for GamePlugin {
             ..default()
         });
         #[cfg(not(debug_assertions))]
-        default_plugins.add_before::<AssetPlugin, _>(EmbeddedAssetPlugin);
+        let default_plugins = default_plugins.add_before::<AssetPlugin, _>(EmbeddedAssetPlugin);
         app.add_plugins(default_plugins)
             // third-party plugins
             .add_plugin(LdtkPlugin)
