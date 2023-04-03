@@ -8,6 +8,7 @@ use bevy::{
     prelude::*,
 };
 use bevy_ecs_ldtk::prelude::*;
+#[cfg(not(debug_assertions))]
 use bevy_embedded_assets::EmbeddedAssetPlugin;
 use bevy_rapier2d::prelude::*;
 
@@ -29,36 +30,28 @@ pub struct GamePlugin;
 
 impl Plugin for GamePlugin {
     fn build(&self, app: &mut App) {
-        app.add_state::<GameState>()
-            .add_plugins(
-                DefaultPlugins
-                    .build()
-                    .set(WindowPlugin {
-                        primary_window: Some(Window {
-                            resolution: (WIDTH as f32, HEIGHT as f32).into(),
-                            canvas: Some("#bevy".to_owned()),
-                            ..default()
-                        }),
-                        ..default()
-                    })
-                    .add_before::<AssetPlugin, _>(EmbeddedAssetPlugin),
-            )
+        let default_plugins = DefaultPlugins.build().set(WindowPlugin {
+            primary_window: Some(Window {
+                resolution: (WIDTH as f32, HEIGHT as f32).into(),
+                canvas: Some("#bevy".to_owned()),
+                ..default()
+            }),
+            ..default()
+        });
+        #[cfg(not(debug_assertions))]
+        default_plugins.add_before::<AssetPlugin, _>(EmbeddedAssetPlugin);
+        app.add_plugins(default_plugins)
             // third-party plugins
             .add_plugin(LdtkPlugin)
             .add_plugin(RapierPhysicsPlugin::<NoUserData>::default())
             .add_plugin(RapierDebugRenderPlugin::default())
-            .insert_resource(LdtkSettings {
-                level_spawn_behavior: LevelSpawnBehavior::UseWorldTranslation {
-                    load_level_neighbors: false,
-                },
-                ..default()
-            })
             .insert_resource(RapierConfiguration {
                 gravity: Vec2::ZERO,
                 ..default()
             })
             .configure_set(LdtkSystemSet::ProcessApi.before(PhysicsSet::SyncBackend))
-            // game plugins
+            // game stuff
+            .add_state::<GameState>()
             .add_plugin(loading::LoadingPlugin)
             .add_plugin(menu::MenuPlugin)
             .add_plugin(level::LevelPlugin)

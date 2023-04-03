@@ -1,7 +1,6 @@
 use crate::{loading::GameAssets, player::Player, GameState};
 use bevy::prelude::*;
 use bevy_ecs_ldtk::prelude::*;
-use bevy_ecs_tilemap::prelude::*;
 use bevy_rapier2d::prelude::*;
 
 pub struct LevelPlugin;
@@ -16,12 +15,19 @@ impl Plugin for LevelPlugin {
             gravity: Vec2::ZERO,
             ..default()
         })
-        .register_ldtk_entity::<DragAreaBundle>("DragArea")
+        .add_event::<LoadLevelEvent>()
         .register_ldtk_int_cell::<FloorBundle>(1)
         .register_ldtk_int_cell::<GoalBundle>(2)
         .add_system(setup.in_schedule(OnEnter(GameState::InGame)))
         .add_systems(
-            (add_goal_sensor, end_game_on_goal, debug).in_set(OnUpdate(GameState::InGame)),
+            (
+                add_goal_sensor,
+                end_game_on_goal,
+                load_level,
+                offset_ldtk_levels_on_spawn.run_if(resource_exists::<ActiveLevel>()),
+                debug,
+            )
+                .in_set(OnUpdate(GameState::InGame)),
         );
     }
 }
@@ -30,8 +36,32 @@ impl Plugin for LevelPlugin {
 // ==== RESOURCES ====
 // ===================
 
-pub struct ActiveLevel {
-    drag_areas: Vec<Entity>,
+#[derive(Resource)]
+pub struct ActiveLevel(LevelData);
+
+#[derive(Clone)]
+pub struct LevelData {
+    width: i32,
+    height: i32,
+    ldtk_level_iids: Vec<String>,
+}
+
+impl LevelData {
+    fn level0() -> Self {
+        Self {
+            width: 2,
+            height: 2,
+            ldtk_level_iids: [
+                "fb209a20-c640-11ed-9fa7-2b9366b48038",
+                "10b5cf40-c640-11ed-9fa7-915e1d71b678",
+                "130c4260-c640-11ed-9fa7-379a4030ffd2",
+                "16df4360-c640-11ed-9fa7-658babce04c5",
+            ]
+            .into_iter()
+            .map(String::from)
+            .collect(),
+        }
+    }
 }
 
 // ====================
@@ -54,53 +84,69 @@ pub struct GoalBundle {
     goal: Goal,
 }
 
-#[derive(Component, Default)]
-pub struct DragArea {
-    grid_x: i32,
-    grid_y: i32,
-    grid_width: i32,
-    grid_height: i32,
-}
+// =================
+// ==== EVENTS =====
+// =================
 
-impl From<&EntityInstance> for DragArea {
-    fn from(instance: &EntityInstance) -> Self {
-        Self {
-            grid_x: instance.grid.x,
-            grid_y: instance.grid.y,
-            grid_width: instance.width / crate::GRID_SIZE,
-            grid_height: instance.height / crate::GRID_SIZE,
-        }
-    }
-}
-
-#[derive(Bundle, LdtkEntity)]
-pub struct DragAreaBundle {
-    #[from_entity_instance]
-    drag_area: DragArea,
-    #[from_entity_instance]
-    entity_instance: EntityInstance,
+struct LoadLevelEvent {
+    level_data: LevelData,
 }
 
 // =================
 // ==== SYSTEMS ====
 // =================
 
-fn setup(mut commands: Commands, game_assets: Res<GameAssets>) {
+fn setup(mut commands: Commands, game_assets: Res<GameAssets>, mut event_writer: EventWriter<LoadLevelEvent>) {
     commands.spawn(LdtkWorldBundle {
         ldtk_handle: game_assets.levels.clone(),
-        level_set: LevelSet {
-            iids: ["ae32b950-c640-11ed-9fa7-eb373d027e17"]
-                .into_iter()
-                .map(String::from)
-                .collect(),
-        },
-        transform: Transform::from_translation(Vec3::new(
-            -crate::WIDTH as f32 / 2.,
-            -crate::HEIGHT as f32 / 2.,
-            0.,
-        )),
+        level_set: LevelSet::default(),
         ..default()
     });
+    event_writer.send(LoadLevelEvent {
+        level_data: LevelData::level0(),
+    });
+}
+
+fn load_level(
+    mut commands: Commands,
+    mut ldtk_world_query: Query<&mut LevelSet>,
+    mut event_reader: EventReader<LoadLevelEvent>,
+) {
+    let mut level_set = ldtk_world_query.single_mut();
+    if let Some(event) = event_reader.iter().next() {
+        level_set.iids = event.level_data.ldtk_level_iids.iter().cloned().collect();
+        commands.insert_resource(ActiveLevel(event.level_data.clone()));
+    }
+    event_reader.clear();
+}
+
+fn offset_ldtk_levels_on_spawn(
+    active_level: Res<ActiveLevel>,
+    ldtk_level_assets: Res<Assets<LdtkLevel>>,
+    mut ldtk_level_query: Query<(&Handle<LdtkLevel>, &mut Transform), Added<Handle<LdtkLevel>>>,
+) {
+    for (level_handle, mut transform) in &mut ldtk_level_query {
+        let ldtk_level = ldtk_level_assets
+            .get(&level_handle)
+            .expect("ldtk level is loaded");
+        let (px_wid, px_hei) = (ldtk_level.level.px_wid, ldtk_level.level.px_hei);
+        // Levels are loaded with the bottom left corner at the world origin.
+        // Here we offset the level so that the center of the level aligns with
+        // the world origin.
+        transform.translation += Vec3::new(-px_wid as f32 / 2., -px_hei as f32 / 2., 0.);
+        let ldtk_level_index = active_level
+            .0
+            .ldtk_level_iids
+            .iter()
+            .position(|iid| *iid == ldtk_level.level.iid)
+            .expect("level iid exists in active level");
+        let row = (ldtk_level_index as i32 / active_level.0.width) as f32;
+        let col = (ldtk_level_index as i32 % active_level.0.width) as f32;
+        let x_offset = (col - 0.5 * (active_level.0.width as f32 - 1.)) * px_wid as f32;
+        // y offset is flipped
+        let y_offset = -(row - 0.5 * (active_level.0.height as f32 - 1.)) * px_hei as f32;
+        transform.translation += Vec3::new(x_offset, y_offset, 0.);
+    }
 }
 
 fn add_goal_sensor(mut commands: Commands, goal_query: Query<Entity, Added<Goal>>) {
@@ -134,45 +180,10 @@ fn end_game_on_goal(
     }
 }
 
-fn debug(
-    input: Res<Input<KeyCode>>,
-    drag_area_query: Query<&DragArea>,
-    mut commands: Commands,
-    mut layer_query: Query<(&LayerMetadata, &mut TileStorage)>,
-    mut tile_query: Query<&mut TilePos>,
-) {
+fn debug(input: Res<Input<KeyCode>>, mut event_writer: EventWriter<LoadLevelEvent>) {
     if input.just_pressed(KeyCode::Space) {
-        let drag_areas: Vec<_> = drag_area_query.iter().collect();
-        for (metadata, mut tile_storage) in &mut layer_query {
-            // if metadata.identifier == "Tiles" {
-                swap_tiles(&mut commands, &mut tile_query, &mut tile_storage, &drag_areas[0], &drag_areas[2]);
-            // }
-        }
-    }
-}
-
-fn swap_tiles(mut commands: &mut Commands, tile_query: &mut Query<&mut TilePos>, tile_storage: &mut TileStorage, from_area: &DragArea, to_area: &DragArea) {
-    assert_eq!(from_area.grid_width, to_area.grid_width);
-    assert_eq!(from_area.grid_height, to_area.grid_height);
-    for dx in 0..from_area.grid_width {
-        for dy in 0..from_area.grid_height {
-            let from_coords = TilePos::new(
-                (from_area.grid_x + dx) as u32,
-                (crate::GRID_HEIGHT - (from_area.grid_y + dy) - 1) as u32,
-            );
-            let to_coords = TilePos::new(
-                (to_area.grid_x + dx) as u32,
-                (crate::GRID_HEIGHT - (to_area.grid_y + dy) - 1) as u32,
-            );
-            dbg!(from_coords, to_coords);
-            let from_entity = tile_storage.get(&from_coords).unwrap();
-            let to_entity = tile_storage.get(&to_coords).unwrap();
-            // tile_storage.remove(&to_coords);
-            // tile_storage.remove(&from_coords);
-            // tile_storage.set(&to_coords, from_entity);
-            // tile_storage.set(&from_coords, to_entity);
-            *tile_query.get_mut(from_entity).unwrap() = to_coords;
-            *tile_query.get_mut(to_entity).unwrap() = from_coords;
-        }
+        event_writer.send(LoadLevelEvent {
+            level_data: LevelData::level0(),
+        })
     }
 }
