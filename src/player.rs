@@ -1,6 +1,7 @@
 use crate::GameState;
 use bevy::prelude::*;
 use bevy_ecs_ldtk::prelude::*;
+use bevy_ecs_tilemap::tiles::{TilePos, TileStorage};
 use bevy_rapier2d::prelude::*;
 use leafwing_input_manager::prelude::*;
 
@@ -10,8 +11,13 @@ impl Plugin for PlayerPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugin(InputManagerPlugin::<PlayerAction>::default())
             .register_ldtk_entity::<PlayerBundle>("Player")
+            .add_event::<MovePlayerEvent>()
             .add_systems(
-                (add_components_to_primary_player, player_movement)
+                (
+                    add_components_to_primary_player,
+                    send_move_event_on_input,
+                    move_player,
+                )
                     .in_set(OnUpdate(GameState::InGame)),
             );
     }
@@ -25,22 +31,42 @@ enum PlayerAction {
     MoveRight,
 }
 
-// #[derive(Clone, Copy, PartialEq, Eq)]
-// enum Direction {
-//     Up,
-//     Down,
-//     Left,
-//     Right,
-// }
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Direction {
+    Up,
+    Down,
+    Left,
+    Right,
+}
+
+impl Direction {
+    fn unit_vec(&self) -> Vec2 {
+        match self {
+            Self::Up => Vec2::Y,
+            Self::Down => -Vec2::Y,
+            Self::Right => Vec2::X,
+            Self::Left => -Vec2::X,
+        }
+    }
+
+    fn unit_grid_coords(&self) -> GridCoords {
+        match self {
+            Self::Up => GridCoords::new(0, 1),
+            Self::Down => GridCoords::new(0, -1),
+            Self::Right => GridCoords::new(1, 0),
+            Self::Left => GridCoords::new(-1, 0),
+        }
+    }
+}
 
 // ================
 // ==== EVENTS ====
 // ================
 
-// struct MovePlayerEvent {
-//     player: Entity,
-//     direction: Direction,
-// }
+struct MovePlayerEvent {
+    player: Entity,
+    direction: Direction,
+}
 
 // ====================
 // ==== COMPONENTS ====
@@ -55,6 +81,8 @@ pub struct PrimaryPlayer;
 #[derive(Bundle, LdtkEntity)]
 pub struct PlayerBundle {
     player: Player,
+    #[grid_coords]
+    grid_coords: GridCoords,
     #[sprite_sheet_bundle]
     #[bundle]
     sprite_sheet: SpriteSheetBundle,
@@ -102,21 +130,53 @@ fn add_components_to_primary_player(
     }
 }
 
-fn player_movement(
-    mut player_query: Query<(&ActionState<PlayerAction>, &mut Transform), With<Player>>,
+fn send_move_event_on_input(
+    player_query: Query<(Entity, &ActionState<PlayerAction>), With<Player>>,
+    mut event_writer: EventWriter<MovePlayerEvent>,
 ) {
-    for (action_state, mut transform) in &mut player_query {
-        if action_state.just_pressed(PlayerAction::MoveUp) {
-            transform.translation += Vec3::Y * 32.;
+    for (entity, action_state) in &player_query {
+        let direction = if action_state.just_pressed(PlayerAction::MoveUp) {
+            Some(Direction::Up)
+        } else if action_state.just_pressed(PlayerAction::MoveDown) {
+            Some(Direction::Down)
+        } else if action_state.just_pressed(PlayerAction::MoveRight) {
+            Some(Direction::Right)
+        } else if action_state.just_pressed(PlayerAction::MoveLeft) {
+            Some(Direction::Left)
+        } else {
+            None
+        };
+        if let Some(direction) = direction {
+            event_writer.send(MovePlayerEvent {
+                direction,
+                player: entity,
+            });
         }
-        if action_state.just_pressed(PlayerAction::MoveDown) {
-            transform.translation -= Vec3::Y * 32.;
-        }
-        if action_state.just_pressed(PlayerAction::MoveRight) {
-            transform.translation += Vec3::X * 32.;
-        }
-        if action_state.just_pressed(PlayerAction::MoveLeft) {
-            transform.translation -= Vec3::X * 32.;
+    }
+}
+
+fn move_player(
+    mut events: EventReader<MovePlayerEvent>,
+    mut player_query: Query<(&mut GridCoords, &mut Transform, &Parent)>,
+    level_query: Query<&Children, With<Handle<LdtkLevel>>>,
+    layer_query: Query<(&LayerMetadata, &TileStorage)>,
+) {
+    for event in events.iter() {
+        let (mut player_coords, mut player_transform, parent) = player_query.get_mut(event.player).unwrap();
+        let level_children = level_query.get(parent.get()).unwrap();
+        for &child in level_children {
+            if let Ok((metadata, tile_storage)) = layer_query.get(child) {
+                if metadata.identifier == "Tiles" {
+                    let new_coords = *player_coords + event.direction.unit_grid_coords();
+                    if tile_storage
+                        .get(&TilePos::new(new_coords.x as u32, new_coords.y as u32))
+                        .is_some()
+                    {
+                        player_transform.translation += event.direction.unit_vec().extend(0.) * 32.;
+                        *player_coords = new_coords;
+                    }
+                }
+            }
         }
     }
 }

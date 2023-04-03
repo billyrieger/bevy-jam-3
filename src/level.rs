@@ -7,28 +7,20 @@ pub struct LevelPlugin;
 
 impl Plugin for LevelPlugin {
     fn build(&self, app: &mut App) {
-        app.insert_resource(LdtkSettings {
-            level_spawn_behavior: LevelSpawnBehavior::UseZeroTranslation,
-            ..default()
-        })
-        .insert_resource(RapierConfiguration {
-            gravity: Vec2::ZERO,
-            ..default()
-        })
-        .add_event::<LoadLevelEvent>()
-        .register_ldtk_int_cell::<FloorBundle>(1)
-        .register_ldtk_int_cell::<GoalBundle>(2)
-        .add_system(setup.in_schedule(OnEnter(GameState::InGame)))
-        .add_systems(
-            (
-                add_goal_sensor,
-                end_game_on_goal,
-                load_level,
-                offset_ldtk_levels_on_spawn.run_if(resource_exists::<ActiveLevel>()),
-                debug,
-            )
-                .in_set(OnUpdate(GameState::InGame)),
-        );
+        app.add_event::<LoadLevelEvent>()
+            .register_ldtk_int_cell::<FloorBundle>(1)
+            .register_ldtk_int_cell::<GoalBundle>(2)
+            .add_system(setup.in_schedule(OnEnter(GameState::InGame)))
+            .add_systems(
+                (
+                    add_goal_sensor,
+                    end_game_on_goal,
+                    load_level,
+                    offset_ldtk_levels_on_spawn.run_if(resource_exists::<ActiveLevel>()),
+                    debug,
+                )
+                    .in_set(OnUpdate(GameState::InGame)),
+            );
     }
 }
 
@@ -96,7 +88,11 @@ struct LoadLevelEvent {
 // ==== SYSTEMS ====
 // =================
 
-fn setup(mut commands: Commands, game_assets: Res<GameAssets>, mut event_writer: EventWriter<LoadLevelEvent>) {
+fn setup(
+    mut commands: Commands,
+    game_assets: Res<GameAssets>,
+    mut event_writer: EventWriter<LoadLevelEvent>,
+) {
     commands.spawn(LdtkWorldBundle {
         ldtk_handle: game_assets.levels.clone(),
         level_set: LevelSet::default(),
