@@ -16,13 +16,14 @@ impl Plugin for PlayerPlugin {
             .register_ldtk_entity::<PlayerBundle>("Player")
             .add_event::<MovePlayerEvent>()
             .add_event::<MoveNeighboringPlayersEvent>()
+            .add_systems((add_components_to_primary_player,).in_set(OnUpdate(GameState::InGame)))
             .add_systems(
                 (
-                    add_components_to_primary_player,
                     send_player_move_event_on_input,
                     move_player,
                     move_neighboring_players,
                 )
+                    .chain()
                     .in_set(OnUpdate(GameState::InGame)),
             );
     }
@@ -37,7 +38,7 @@ enum PlayerAction {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum Direction {
+pub enum Direction {
     Up,
     Down,
     Left,
@@ -68,14 +69,14 @@ impl Direction {
 // ==== EVENTS ====
 // ================
 
-struct MovePlayerEvent {
-    player: Entity,
-    direction: Direction,
+pub struct MovePlayerEvent {
+    pub player: Entity,
+    pub direction: Direction,
 }
 
-struct MoveNeighboringPlayersEvent {
-    grid_coords: MetaGridPos,
-    direction: Direction,
+pub struct MoveNeighboringPlayersEvent {
+    pub grid_coords: MetaGridPos,
+    pub direction: Direction,
 }
 
 // ====================
@@ -96,14 +97,14 @@ pub struct PlayerBundle {
     #[sprite_sheet_bundle]
     #[bundle]
     sprite_sheet: SpriteSheetBundle,
-    #[with(player_physics)]
+    #[with(player_physics_bundle)]
     #[bundle]
     physics: (RigidBody, Collider, ActiveEvents),
     #[from_entity_instance]
     entity_instance: EntityInstance,
 }
 
-fn player_physics(_: &EntityInstance) -> (RigidBody, Collider, ActiveEvents) {
+fn player_physics_bundle(_: &EntityInstance) -> (RigidBody, Collider, ActiveEvents) {
     (
         RigidBody::Dynamic,
         Collider::ball(8.),
@@ -165,31 +166,9 @@ fn send_player_move_event_on_input(
     }
 }
 
-fn move_neighboring_players(
-    mut event_reader: EventReader<MoveNeighboringPlayersEvent>,
-    mut event_writer: EventWriter<MovePlayerEvent>,
-    level_query: Query<(&Children, &LevelPosition), With<Handle<LdtkLevel>>>,
-    player_query: Query<&Player>,
-) {
-    for event in event_reader.iter() {
-        for (children, level_position) in level_query.iter() {
-            if level_position.0.is_neighbor(event.grid_coords) {
-                for &child in children {
-                    if player_query.contains(child) {
-                        event_writer.send(MovePlayerEvent {
-                            player: child,
-                            direction: event.direction,
-                        })
-                    }
-                }
-            }
-        }
-    }
-}
-
 fn move_player(
-    mut event_reader: EventReader<MovePlayerEvent>,
-    mut event_writer: EventWriter<MoveNeighboringPlayersEvent>,
+    mut move_player_events: EventReader<MovePlayerEvent>,
+    mut move_neighboring_player_events: EventWriter<MoveNeighboringPlayersEvent>,
     mut player_query: Query<
         (
             &mut GridCoords,
@@ -202,30 +181,76 @@ fn move_player(
     level_query: Query<(Entity, &Children, &LevelPosition), With<Handle<LdtkLevel>>>,
     layer_query: Query<(&LayerMetadata, &TileStorage)>,
 ) {
-    for event in event_reader.iter() {
+    for event in move_player_events.iter() {
         let (mut player_coords, mut player_transform, parent, maybe_primary_player) =
             player_query.get_mut(event.player).unwrap();
         let (_, level_children, level_pos) = level_query.get(parent.get()).unwrap();
         for &child in level_children {
-            if let Ok((metadata, tile_storage)) = layer_query.get(child) {
-                if metadata.identifier == "Tiles" {
-                    let new_coords = *player_coords + event.direction.unit_grid_coords();
-                    if let Some(_tile_entity) =
-                        tile_storage.get(&TilePos::new(new_coords.x as u32, new_coords.y as u32))
-                    {
-                        // TODO: more logic here
-                        player_transform.translation += event.direction.unit_vec().extend(0.) * 32.;
-                        *player_coords = new_coords;
-                        if maybe_primary_player.is_some() {
-                            event_writer.send(MoveNeighboringPlayersEvent {
-                                grid_coords: level_pos.0,
-                                direction: event.direction,
-                            })
-                            // send move event to neighboring levels
-                        }
-                    }
+            let Ok((metadata, tile_storage)) = layer_query.get(child) else { continue };
+            if metadata.identifier != "Tiles" {
+                continue;
+            }
+            let did_move = player_movement_logic(
+                &tile_storage,
+                &mut player_transform.translation,
+                &mut player_coords,
+                &event.direction,
+            );
+            if did_move && maybe_primary_player.is_some() {
+                move_neighboring_player_events.send(MoveNeighboringPlayersEvent {
+                    grid_coords: level_pos.0,
+                    direction: event.direction,
+                })
+            }
+        }
+    }
+}
+
+pub fn move_neighboring_players(
+    mut move_neighboring_player_events: EventReader<MoveNeighboringPlayersEvent>,
+    mut player_query: Query<(&mut GridCoords, &mut Transform), With<Player>>,
+    level_query: Query<(&Children, &LevelPosition), With<Handle<LdtkLevel>>>,
+    layer_query: Query<(&LayerMetadata, &TileStorage)>,
+) {
+    for event in move_neighboring_player_events.iter() {
+        for (level_children, _) in level_query
+            .iter()
+            .filter(|(_, level_pos)| level_pos.0.is_neighbor(event.grid_coords))
+        {
+            for &child in level_children {
+                let Ok((metadata, tile_storage)) = layer_query.get(child) else { continue };
+                if metadata.identifier != "Tiles" {
+                    continue;
+                }
+                for &child in level_children {
+                    let Ok((mut player_coords, mut player_transform)) = player_query.get_mut(child) else { continue };
+                    let _did_move = player_movement_logic(
+                        &tile_storage,
+                        &mut player_transform.translation,
+                        &mut player_coords,
+                        &event.direction,
+                    );
                 }
             }
         }
+    }
+}
+
+fn player_movement_logic(
+    tile_storage: &TileStorage,
+    player_translation: &mut Vec3,
+    player_coords: &mut GridCoords,
+    direction: &Direction,
+) -> bool {
+    let new_coords = *player_coords + direction.unit_grid_coords();
+    if let Some(_tile_entity) =
+        tile_storage.get(&TilePos::new(new_coords.x as u32, new_coords.y as u32))
+    {
+        // TODO: more logic
+        *player_translation += direction.unit_vec().extend(0.) * 32.;
+        *player_coords = new_coords;
+        true
+    } else {
+        false
     }
 }

@@ -3,21 +3,25 @@ use bevy::{prelude::*, utils::HashMap};
 use bevy_ecs_ldtk::prelude::*;
 use bevy_rapier2d::prelude::*;
 
+const LEVEL_SPAWN_DELAY_SEC: f32 = 0.5;
+
 pub struct LevelPlugin;
 
 impl Plugin for LevelPlugin {
     fn build(&self, app: &mut App) {
-        app.add_event::<LoadLevelEvent>()
+        app.init_resource::<ActiveLevel>()
+            .add_event::<LoadLevelEvent>()
             .register_ldtk_int_cell::<FloorBundle>(1)
             .register_ldtk_int_cell::<GoalBundle>(2)
             .add_system(setup.in_schedule(OnEnter(GameState::InGame)))
             .add_systems(
                 (
-                    add_goal_sensor,
-                    end_game_on_goal,
                     load_level,
-                    setup_ldtk_levels_on_spawn.run_if(resource_exists::<ActiveLevel>()),
+                    setup_ldtk_levels_on_spawn,
+                    add_goal_sensor,
+                    load_next_level_on_goal,
                     debug,
+                    level_countdown_timer.run_if(resource_exists::<LevelSpawnCountdown>()),
                 )
                     .in_set(OnUpdate(GameState::InGame)),
             );
@@ -29,8 +33,14 @@ impl Plugin for LevelPlugin {
 // ===================
 
 #[derive(Resource)]
+struct LevelSpawnCountdown {
+    timer: Timer,
+    level_num: i32,
+}
+
+#[derive(Resource, Default)]
 pub struct ActiveLevel {
-    pub grid_size: usize,
+    pub level_num: i32,
     pub grid_width: i32,
     pub grid_height: i32,
     pub item_width_px: i32,
@@ -140,22 +150,25 @@ fn load_level(
     if let Some(event) = event_reader.iter().next() {
         let (mut level_set, ldtk_handle) = ldtk_world_query.single_mut();
         let ldtk_asset = ldtk_assets.get(&ldtk_handle).expect("ldtk asset exists");
+
         // these are updated as we iterate over the levels
         let mut grid_width = 1;
         let mut grid_height = 1;
         let mut item_width_px = 0;
         let mut item_height_px = 0;
         let mut initial_placement = HashMap::new();
+
         ldtk_asset
             .iter_levels()
-            .filter_map(|level| {
+            // only include the levels with the correct LevelNum
+            .filter(|level| {
                 level
                     .field_instances
                     .iter()
                     .any(|field| {
                         field.identifier == "LevelNum"
                             && matches!(field.value, FieldValue::Int(Some(num)) if num == event.level_num)
-                    }).then_some(level)
+                    })
             }).for_each(|level| {
                 let row = level.field_instances.iter().filter(|field| field.identifier == "GridRow").find_map(|field| {
                     if let FieldValue::Int(Some(row)) = field.value {
@@ -178,15 +191,14 @@ fn load_level(
                 initial_placement.insert(MetaGridPos::new(row, col), level.iid.clone());
             });
         level_set.iids = initial_placement.values().cloned().collect();
-        let grid_size = (grid_width * grid_height) as usize;
         commands.insert_resource(ActiveLevel {
-            grid_size,
+            level_num: event.level_num,
             grid_width,
             grid_height,
             item_width_px,
             item_height_px,
             initial_placement,
-            // this is initialized as the LDtk levels are spawned
+            // this is filled with entities as the LDtk levels are spawned
             active_placement: HashMap::new(),
         });
     }
@@ -229,24 +241,53 @@ fn add_goal_sensor(mut commands: Commands, goal_query: Query<Entity, Added<Goal>
     }
 }
 
-fn end_game_on_goal(
+fn load_next_level_on_goal(
+    mut commands: Commands,
+    active_level: Res<ActiveLevel>,
+    level_spawn_countdown: Option<Res<LevelSpawnCountdown>>,
     player_query: Query<&Player>,
     goal_query: Query<&Goal>,
-    mut world_query: Query<&mut LevelSet>,
     mut collision_events: EventReader<CollisionEvent>,
+    // mut event_writer: EventWriter<LoadLevelEvent>,
 ) {
-    for event in collision_events.iter() {
-        match *event {
-            CollisionEvent::Started(a, b, _) => {
-                if player_query.contains(a) && goal_query.contains(b)
-                    || player_query.contains(b) && goal_query.contains(a)
-                {
-                    let mut level_set = world_query.single_mut();
-                    *level_set = LevelSet::default();
+    // only continue if we're not already waiting to load a new level
+    if level_spawn_countdown.is_none() {
+        for event in collision_events.iter() {
+            match *event {
+                CollisionEvent::Started(a, b, _) => {
+                    if player_query.contains(a) && goal_query.contains(b)
+                        || player_query.contains(b) && goal_query.contains(a)
+                    {
+                        // event_writer.send(LoadLevelEvent {
+                        //     level_num: active_level.level_num + 1,
+                        // });
+                        commands.insert_resource(LevelSpawnCountdown {
+                            timer: Timer::from_seconds(LEVEL_SPAWN_DELAY_SEC, TimerMode::Once),
+                            level_num: active_level.level_num + 1,
+                        });
+                    }
                 }
+                CollisionEvent::Stopped(_, _, _) => {}
             }
-            CollisionEvent::Stopped(_, _, _) => {}
         }
+    }
+}
+
+fn level_countdown_timer(
+    mut commands: Commands,
+    time: Res<Time>,
+    mut level_spawn_countdown: ResMut<LevelSpawnCountdown>,
+    mut load_level_events: EventWriter<LoadLevelEvent>,
+) {
+    if level_spawn_countdown
+        .timer
+        .tick(time.delta())
+        .just_finished()
+    {
+        commands.remove_resource::<LevelSpawnCountdown>();
+        load_level_events.send(LoadLevelEvent {
+            level_num: level_spawn_countdown.level_num,
+        })
     }
 }
 
