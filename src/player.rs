@@ -15,7 +15,7 @@ impl Plugin for PlayerPlugin {
             .add_systems(
                 (
                     add_components_to_primary_player,
-                    send_move_event_on_input,
+                    send_player_move_event_on_input,
                     move_player,
                 )
                     .in_set(OnUpdate(GameState::InGame)),
@@ -130,7 +130,7 @@ fn add_components_to_primary_player(
     }
 }
 
-fn send_move_event_on_input(
+fn send_player_move_event_on_input(
     player_query: Query<(Entity, &ActionState<PlayerAction>), With<Player>>,
     mut event_writer: EventWriter<MovePlayerEvent>,
 ) {

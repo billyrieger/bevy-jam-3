@@ -1,5 +1,5 @@
 use crate::{loading::GameAssets, player::Player, GameState};
-use bevy::prelude::*;
+use bevy::{prelude::*, utils::HashMap};
 use bevy_ecs_ldtk::prelude::*;
 use bevy_rapier2d::prelude::*;
 
@@ -14,9 +14,9 @@ impl Plugin for LevelPlugin {
             .add_systems(
                 (
                     add_goal_sensor,
-                    end_game_on_goal,
+                    // end_game_on_goal,
                     load_level,
-                    offset_ldtk_levels_on_spawn.run_if(resource_exists::<ActiveLevel>()),
+                    setup_ldtk_levels_on_spawn.run_if(resource_exists::<ActiveLevel>()),
                     debug,
                 )
                     .in_set(OnUpdate(GameState::InGame)),
@@ -29,27 +29,28 @@ impl Plugin for LevelPlugin {
 // ===================
 
 #[derive(Resource)]
-pub struct ActiveLevel(LevelData);
-
-#[derive(Clone)]
-pub struct LevelData {
-    width: i32,
-    height: i32,
-    ldtk_level_iids: Vec<&'static str>,
+pub struct ActiveLevel {
+    grid_size: usize,
+    grid_width: i32,
+    grid_height: i32,
+    item_width_px: i32,
+    item_height_px: i32,
+    initial_placement: HashMap<MetaGridPos, String>,
+    active_placement: HashMap<MetaGridPos, Entity>,
 }
 
-impl LevelData {
-    fn level0() -> Self {
-        Self {
-            width: 2,
-            height: 2,
-            ldtk_level_iids: vec![
-                "fb209a20-c640-11ed-9fa7-2b9366b48038",
-                "10b5cf40-c640-11ed-9fa7-915e1d71b678",
-                "130c4260-c640-11ed-9fa7-379a4030ffd2",
-                "16df4360-c640-11ed-9fa7-658babce04c5",
-            ],
-        }
+impl ActiveLevel {
+    fn get_translation(&self, grid_pos: MetaGridPos) -> Vec2 {
+        let col_offset =
+            (grid_pos.col as f32 - 0.5 * (self.grid_width as f32 - 1.)) * self.item_width_px as f32;
+        // row offset is flipped
+        let row_offset = -(grid_pos.row as f32 - 0.5 * (self.grid_height as f32 - 1.))
+            * self.item_height_px as f32;
+        // Levels are loaded with the bottom left corner at the world origin.
+        // Here we offset the level so that the center of the level aligns with
+        // the world origin.
+        let center_offset = Vec2::new(-self.item_width_px as f32, -self.item_height_px as f32) / 2.;
+        Vec2::new(col_offset, row_offset) + center_offset
     }
 }
 
@@ -73,12 +74,37 @@ pub struct GoalBundle {
     goal: Goal,
 }
 
-// =================
-// ==== EVENTS =====
-// =================
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+pub struct MetaGridPos {
+    pub row: i32,
+    pub col: i32,
+}
+
+impl MetaGridPos {
+    pub fn new(row: i32, col: i32) -> Self {
+        Self { row, col }
+    }
+
+    pub fn neighbors(&self) -> [Self; 8] {
+        [
+            Self::new(self.row - 1, self.col - 1),
+            Self::new(self.row - 1, self.col),
+            Self::new(self.row - 1, self.col + 1),
+            Self::new(self.row, self.col - 1),
+            Self::new(self.row, self.col + 1),
+            Self::new(self.row + 1, self.col - 1),
+            Self::new(self.row + 1, self.col),
+            Self::new(self.row + 1, self.col + 1),
+        ]
+    }
+}
+
+// ================
+// ==== EVENTS ====
+// ================
 
 struct LoadLevelEvent {
-    level_data: LevelData,
+    level_num: i32,
 }
 
 // =================
@@ -95,55 +121,90 @@ fn setup(
         level_set: LevelSet::default(),
         ..default()
     });
-    event_writer.send(LoadLevelEvent {
-        level_data: LevelData::level0(),
-    });
+    event_writer.send(LoadLevelEvent { level_num: 0 });
 }
 
 fn load_level(
     mut commands: Commands,
-    mut ldtk_world_query: Query<&mut LevelSet>,
+    ldtk_assets: Res<Assets<LdtkAsset>>,
+    mut ldtk_world_query: Query<(&mut LevelSet, &Handle<LdtkAsset>)>,
     mut event_reader: EventReader<LoadLevelEvent>,
 ) {
-    let mut level_set = ldtk_world_query.single_mut();
     if let Some(event) = event_reader.iter().next() {
-        level_set.iids = event
-            .level_data
-            .ldtk_level_iids
-            .iter()
-            .map(|s| s.to_string())
-            .collect();
-        commands.insert_resource(ActiveLevel(event.level_data.clone()));
+        let (mut level_set, ldtk_handle) = ldtk_world_query.single_mut();
+        let ldtk_asset = ldtk_assets.get(&ldtk_handle).expect("ldtk asset exists");
+        // these are updated as we iterate over the levels
+        let mut grid_width = 1;
+        let mut grid_height = 1;
+        let mut item_width_px = 0;
+        let mut item_height_px = 0;
+        let mut initial_placement = HashMap::new();
+        ldtk_asset
+            .iter_levels()
+            .filter_map(|level| {
+                level
+                    .field_instances
+                    .iter()
+                    .any(|field| {
+                        field.identifier == "LevelNum"
+                            && matches!(field.value, FieldValue::Int(Some(num)) if num == event.level_num)
+                    }).then_some(level)
+            }).for_each(|level| {
+                let row = level.field_instances.iter().filter(|field| field.identifier == "GridRow").find_map(|field| {
+                    if let FieldValue::Int(Some(row)) = field.value {
+                        Some(row)
+                    } else {
+                        None
+                    }
+                }).expect("GridRow field is defined");
+                let col = level.field_instances.iter().filter(|field| field.identifier == "GridCol").find_map(|field| {
+                    if let FieldValue::Int(Some(col)) = field.value {
+                        Some(col)
+                    } else {
+                        None
+                    }
+                }).expect("GridCol field is defined");
+                grid_height = grid_height.max(row + 1);
+                grid_width = grid_width.max(col + 1);
+                item_width_px = item_width_px.max(level.px_wid);
+                item_height_px = item_height_px.max(level.px_hei);
+                initial_placement.insert(MetaGridPos::new(row, col), level.iid.clone());
+            });
+        level_set.iids = initial_placement.values().cloned().collect();
+        let grid_size = (grid_width * grid_height) as usize;
+        commands.insert_resource(ActiveLevel {
+            grid_size,
+            grid_width,
+            grid_height,
+            item_width_px,
+            item_height_px,
+            initial_placement,
+            // this is initialized as the LDtk levels are spawned
+            active_placement: HashMap::new(),
+        });
     }
     event_reader.clear();
 }
 
-fn offset_ldtk_levels_on_spawn(
-    active_level: Res<ActiveLevel>,
+fn setup_ldtk_levels_on_spawn(
+    mut active_level: ResMut<ActiveLevel>,
     ldtk_level_assets: Res<Assets<LdtkLevel>>,
-    mut ldtk_level_query: Query<(&Handle<LdtkLevel>, &mut Transform), Added<Handle<LdtkLevel>>>,
+    mut ldtk_level_query: Query<
+        (Entity, &Handle<LdtkLevel>, &mut Transform),
+        Added<Handle<LdtkLevel>>,
+    >,
 ) {
-    for (level_handle, mut transform) in &mut ldtk_level_query {
+    for (level_entity, level_handle, mut level_transform) in &mut ldtk_level_query {
         let ldtk_level = ldtk_level_assets
             .get(&level_handle)
             .expect("ldtk level is loaded");
-        let (px_wid, px_hei) = (ldtk_level.level.px_wid, ldtk_level.level.px_hei);
-        // Levels are loaded with the bottom left corner at the world origin.
-        // Here we offset the level so that the center of the level aligns with
-        // the world origin.
-        transform.translation += Vec3::new(-px_wid as f32 / 2., -px_hei as f32 / 2., 0.);
-        let ldtk_level_index = active_level
-            .0
-            .ldtk_level_iids
+        let (&grid_pos, _) = active_level
+            .initial_placement
             .iter()
-            .position(|iid| *iid == ldtk_level.level.iid)
+            .find(|(_pos, iid)| **iid == ldtk_level.level.iid)
             .expect("level iid exists in active level");
-        let row = (ldtk_level_index as i32 / active_level.0.width) as f32;
-        let col = (ldtk_level_index as i32 % active_level.0.width) as f32;
-        let x_offset = (col - 0.5 * (active_level.0.width as f32 - 1.)) * px_wid as f32;
-        // y offset is flipped
-        let y_offset = -(row - 0.5 * (active_level.0.height as f32 - 1.)) * px_hei as f32;
-        transform.translation += Vec3::new(x_offset, y_offset, 0.);
+        active_level.active_placement.insert(grid_pos, level_entity);
+        level_transform.translation = active_level.get_translation(grid_pos).extend(0.);
     }
 }
 
@@ -180,8 +241,6 @@ fn end_game_on_goal(
 
 fn debug(input: Res<Input<KeyCode>>, mut event_writer: EventWriter<LoadLevelEvent>) {
     if input.just_pressed(KeyCode::Space) {
-        event_writer.send(LoadLevelEvent {
-            level_data: LevelData::level0(),
-        })
+        event_writer.send(LoadLevelEvent { level_num: 0 })
     }
 }
