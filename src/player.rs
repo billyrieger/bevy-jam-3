@@ -162,15 +162,15 @@ fn move_player(
     layer_query: Query<(&LayerMetadata, &TileStorage)>,
 ) {
     for event in events.iter() {
-        let (mut player_coords, mut player_transform, parent) = player_query.get_mut(event.player).unwrap();
+        let (mut player_coords, mut player_transform, parent) =
+            player_query.get_mut(event.player).unwrap();
         let level_children = level_query.get(parent.get()).unwrap();
         for &child in level_children {
             if let Ok((metadata, tile_storage)) = layer_query.get(child) {
                 if metadata.identifier == "Tiles" {
                     let new_coords = *player_coords + event.direction.unit_grid_coords();
-                    if tile_storage
-                        .get(&TilePos::new(new_coords.x as u32, new_coords.y as u32))
-                        .is_some()
+                    if let Some(_tile_entity) =
+                        tile_storage.get(&TilePos::new(new_coords.x as u32, new_coords.y as u32))
                     {
                         player_transform.translation += event.direction.unit_vec().extend(0.) * 32.;
                         *player_coords = new_coords;

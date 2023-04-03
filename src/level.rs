@@ -35,7 +35,7 @@ pub struct ActiveLevel(LevelData);
 pub struct LevelData {
     width: i32,
     height: i32,
-    ldtk_level_iids: Vec<String>,
+    ldtk_level_iids: Vec<&'static str>,
 }
 
 impl LevelData {
@@ -43,15 +43,12 @@ impl LevelData {
         Self {
             width: 2,
             height: 2,
-            ldtk_level_iids: [
+            ldtk_level_iids: vec![
                 "fb209a20-c640-11ed-9fa7-2b9366b48038",
                 "10b5cf40-c640-11ed-9fa7-915e1d71b678",
                 "130c4260-c640-11ed-9fa7-379a4030ffd2",
                 "16df4360-c640-11ed-9fa7-658babce04c5",
-            ]
-            .into_iter()
-            .map(String::from)
-            .collect(),
+            ],
         }
     }
 }
@@ -110,7 +107,12 @@ fn load_level(
 ) {
     let mut level_set = ldtk_world_query.single_mut();
     if let Some(event) = event_reader.iter().next() {
-        level_set.iids = event.level_data.ldtk_level_iids.iter().cloned().collect();
+        level_set.iids = event
+            .level_data
+            .ldtk_level_iids
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
         commands.insert_resource(ActiveLevel(event.level_data.clone()));
     }
     event_reader.clear();

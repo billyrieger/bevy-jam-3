@@ -2,11 +2,9 @@ pub mod level;
 pub mod loading;
 pub mod menu;
 pub mod player;
+pub mod util;
 
-use bevy::{
-    ecs::{archetype::Archetypes, component::ComponentId},
-    prelude::*,
-};
+use bevy::prelude::*;
 use bevy_ecs_ldtk::prelude::*;
 #[cfg(not(debug_assertions))]
 use bevy_embedded_assets::EmbeddedAssetPlugin;
@@ -52,24 +50,13 @@ impl Plugin for GamePlugin {
             .configure_set(LdtkSystemSet::ProcessApi.before(PhysicsSet::SyncBackend))
             // game stuff
             .add_state::<GameState>()
+            .add_plugin(util::UtilPlugin)
             .add_plugin(loading::LoadingPlugin)
             .add_plugin(menu::MenuPlugin)
             .add_plugin(level::LevelPlugin)
             .add_plugin(player::PlayerPlugin)
-            .add_system(setup.on_startup());
+            .add_system(setup_camera.on_startup());
     }
-}
-
-pub fn get_components_for_entity<'a>(
-    entity: &Entity,
-    archetypes: &'a Archetypes,
-) -> Option<impl Iterator<Item = ComponentId> + 'a> {
-    for archetype in archetypes.iter() {
-        if archetype.entities().iter().any(|e| e.entity() == *entity) {
-            return Some(archetype.components());
-        }
-    }
-    None
 }
 
 // ====================
@@ -79,6 +66,10 @@ pub fn get_components_for_entity<'a>(
 #[derive(Component)]
 pub struct MainCamera;
 
-fn setup(mut commands: Commands) {
+// =================
+// ==== SYSTEMS ====
+// =================
+
+fn setup_camera(mut commands: Commands) {
     commands.spawn((MainCamera, Camera2dBundle::default()));
 }
