@@ -1,4 +1,7 @@
-use crate::GameState;
+use crate::{
+    level::{LevelPosition, MetaGridPos},
+    GameState,
+};
 use bevy::prelude::*;
 use bevy_ecs_ldtk::prelude::*;
 use bevy_ecs_tilemap::tiles::{TilePos, TileStorage};
@@ -12,11 +15,13 @@ impl Plugin for PlayerPlugin {
         app.add_plugin(InputManagerPlugin::<PlayerAction>::default())
             .register_ldtk_entity::<PlayerBundle>("Player")
             .add_event::<MovePlayerEvent>()
+            .add_event::<MoveNeighboringPlayersEvent>()
             .add_systems(
                 (
                     add_components_to_primary_player,
                     send_player_move_event_on_input,
                     move_player,
+                    move_neighboring_players,
                 )
                     .in_set(OnUpdate(GameState::InGame)),
             );
@@ -65,6 +70,11 @@ impl Direction {
 
 struct MovePlayerEvent {
     player: Entity,
+    direction: Direction,
+}
+
+struct MoveNeighboringPlayersEvent {
+    grid_coords: MetaGridPos,
     direction: Direction,
 }
 
@@ -155,16 +165,47 @@ fn send_player_move_event_on_input(
     }
 }
 
+fn move_neighboring_players(
+    mut event_reader: EventReader<MoveNeighboringPlayersEvent>,
+    mut event_writer: EventWriter<MovePlayerEvent>,
+    level_query: Query<(&Children, &LevelPosition), With<Handle<LdtkLevel>>>,
+    player_query: Query<&Player>,
+) {
+    for event in event_reader.iter() {
+        for (children, level_position) in level_query.iter() {
+            if level_position.0.is_neighbor(event.grid_coords) {
+                for &child in children {
+                    if player_query.contains(child) {
+                        event_writer.send(MovePlayerEvent {
+                            player: child,
+                            direction: event.direction,
+                        })
+                    }
+                }
+            }
+        }
+    }
+}
+
 fn move_player(
-    mut events: EventReader<MovePlayerEvent>,
-    mut player_query: Query<(&mut GridCoords, &mut Transform, &Parent)>,
-    level_query: Query<&Children, With<Handle<LdtkLevel>>>,
+    mut event_reader: EventReader<MovePlayerEvent>,
+    mut event_writer: EventWriter<MoveNeighboringPlayersEvent>,
+    mut player_query: Query<
+        (
+            &mut GridCoords,
+            &mut Transform,
+            &Parent,
+            Option<&PrimaryPlayer>,
+        ),
+        With<Player>,
+    >,
+    level_query: Query<(Entity, &Children, &LevelPosition), With<Handle<LdtkLevel>>>,
     layer_query: Query<(&LayerMetadata, &TileStorage)>,
 ) {
-    for event in events.iter() {
-        let (mut player_coords, mut player_transform, parent) =
+    for event in event_reader.iter() {
+        let (mut player_coords, mut player_transform, parent, maybe_primary_player) =
             player_query.get_mut(event.player).unwrap();
-        let level_children = level_query.get(parent.get()).unwrap();
+        let (_, level_children, level_pos) = level_query.get(parent.get()).unwrap();
         for &child in level_children {
             if let Ok((metadata, tile_storage)) = layer_query.get(child) {
                 if metadata.identifier == "Tiles" {
@@ -172,8 +213,16 @@ fn move_player(
                     if let Some(_tile_entity) =
                         tile_storage.get(&TilePos::new(new_coords.x as u32, new_coords.y as u32))
                     {
+                        // TODO: more logic here
                         player_transform.translation += event.direction.unit_vec().extend(0.) * 32.;
                         *player_coords = new_coords;
+                        if maybe_primary_player.is_some() {
+                            event_writer.send(MoveNeighboringPlayersEvent {
+                                grid_coords: level_pos.0,
+                                direction: event.direction,
+                            })
+                            // send move event to neighboring levels
+                        }
                     }
                 }
             }

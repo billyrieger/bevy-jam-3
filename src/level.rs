@@ -14,7 +14,7 @@ impl Plugin for LevelPlugin {
             .add_systems(
                 (
                     add_goal_sensor,
-                    // end_game_on_goal,
+                    end_game_on_goal,
                     load_level,
                     setup_ldtk_levels_on_spawn.run_if(resource_exists::<ActiveLevel>()),
                     debug,
@@ -30,13 +30,13 @@ impl Plugin for LevelPlugin {
 
 #[derive(Resource)]
 pub struct ActiveLevel {
-    grid_size: usize,
-    grid_width: i32,
-    grid_height: i32,
-    item_width_px: i32,
-    item_height_px: i32,
-    initial_placement: HashMap<MetaGridPos, String>,
-    active_placement: HashMap<MetaGridPos, Entity>,
+    pub grid_size: usize,
+    pub grid_width: i32,
+    pub grid_height: i32,
+    pub item_width_px: i32,
+    pub item_height_px: i32,
+    pub initial_placement: HashMap<MetaGridPos, String>,
+    pub active_placement: HashMap<MetaGridPos, Entity>,
 }
 
 impl ActiveLevel {
@@ -46,11 +46,40 @@ impl ActiveLevel {
         // row offset is flipped
         let row_offset = -(grid_pos.row as f32 - 0.5 * (self.grid_height as f32 - 1.))
             * self.item_height_px as f32;
-        // Levels are loaded with the bottom left corner at the world origin.
-        // Here we offset the level so that the center of the level aligns with
-        // the world origin.
+        // levels are loaded with the bottom left corner at the world origin, so
+        // we offset the level so that the center of the level aligns with the
+        // world origin.
         let center_offset = Vec2::new(-self.item_width_px as f32, -self.item_height_px as f32) / 2.;
         Vec2::new(col_offset, row_offset) + center_offset
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+pub struct MetaGridPos {
+    pub row: i32,
+    pub col: i32,
+}
+
+impl MetaGridPos {
+    pub fn new(row: i32, col: i32) -> Self {
+        Self { row, col }
+    }
+
+    pub fn is_neighbor(&self, other: Self) -> bool {
+        (self.row - other.row).abs() + (self.col - other.col).abs() == 1
+    }
+
+    pub fn neighbors(&self) -> [Self; 8] {
+        [
+            Self::new(self.row - 1, self.col - 1),
+            Self::new(self.row - 1, self.col),
+            Self::new(self.row - 1, self.col + 1),
+            Self::new(self.row, self.col - 1),
+            Self::new(self.row, self.col + 1),
+            Self::new(self.row + 1, self.col - 1),
+            Self::new(self.row + 1, self.col),
+            Self::new(self.row + 1, self.col + 1),
+        ]
     }
 }
 
@@ -74,30 +103,8 @@ pub struct GoalBundle {
     goal: Goal,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
-pub struct MetaGridPos {
-    pub row: i32,
-    pub col: i32,
-}
-
-impl MetaGridPos {
-    pub fn new(row: i32, col: i32) -> Self {
-        Self { row, col }
-    }
-
-    pub fn neighbors(&self) -> [Self; 8] {
-        [
-            Self::new(self.row - 1, self.col - 1),
-            Self::new(self.row - 1, self.col),
-            Self::new(self.row - 1, self.col + 1),
-            Self::new(self.row, self.col - 1),
-            Self::new(self.row, self.col + 1),
-            Self::new(self.row + 1, self.col - 1),
-            Self::new(self.row + 1, self.col),
-            Self::new(self.row + 1, self.col + 1),
-        ]
-    }
-}
+#[derive(Component)]
+pub struct LevelPosition(pub MetaGridPos);
 
 // ================
 // ==== EVENTS ====
@@ -187,6 +194,7 @@ fn load_level(
 }
 
 fn setup_ldtk_levels_on_spawn(
+    mut commands: Commands,
     mut active_level: ResMut<ActiveLevel>,
     ldtk_level_assets: Res<Assets<LdtkLevel>>,
     mut ldtk_level_query: Query<
@@ -204,6 +212,9 @@ fn setup_ldtk_levels_on_spawn(
             .find(|(_pos, iid)| **iid == ldtk_level.level.iid)
             .expect("level iid exists in active level");
         active_level.active_placement.insert(grid_pos, level_entity);
+        commands
+            .entity(level_entity)
+            .insert(LevelPosition(grid_pos));
         level_transform.translation = active_level.get_translation(grid_pos).extend(0.);
     }
 }
