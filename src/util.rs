@@ -5,6 +5,7 @@ use bevy::{
     },
     prelude::*,
 };
+use bevy_ecs_tilemap::tiles::TilePos;
 
 pub struct UtilPlugin;
 
@@ -40,6 +41,14 @@ fn entity_component_debugger(
             .collect::<Vec<_>>();
         info!("Components: {component_names:?}");
     }
+}
+
+pub fn grid_coords_to_tile_pos(
+    grid_coords: bevy_ecs_ldtk::GridCoords,
+) -> Option<bevy_ecs_tilemap::tiles::TilePos> {
+    let x = u32::try_from(grid_coords.x).ok()?;
+    let y = u32::try_from(grid_coords.y).ok()?;
+    Some(TilePos::new(x, y))
 }
 
 // from https://github.com/bevyengine/bevy/discussions/3332

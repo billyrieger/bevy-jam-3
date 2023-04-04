@@ -12,6 +12,7 @@ use bevy_rapier2d::prelude::*;
 
 pub const WIDTH: i32 = 640;
 pub const HEIGHT: i32 = 480;
+pub const GRID_SIZE: i32 = 32;
 
 #[derive(States, Clone, Default, Debug, PartialEq, Eq, Hash)]
 enum GameState {

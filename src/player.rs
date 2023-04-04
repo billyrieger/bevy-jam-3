@@ -1,10 +1,11 @@
 use crate::{
-    level::{LevelPosition, MetaGridPos},
+    level::{LevelPosition, MetaGridPos, TileType},
+    util::grid_coords_to_tile_pos,
     GameState,
 };
 use bevy::prelude::*;
 use bevy_ecs_ldtk::prelude::*;
-use bevy_ecs_tilemap::tiles::{TilePos, TileStorage};
+use bevy_ecs_tilemap::tiles::TileStorage;
 use bevy_rapier2d::prelude::*;
 use leafwing_input_manager::prelude::*;
 
@@ -180,23 +181,25 @@ fn move_player(
     >,
     level_query: Query<(Entity, &Children, &LevelPosition), With<Handle<LdtkLevel>>>,
     layer_query: Query<(&LayerMetadata, &TileStorage)>,
+    tile_query: Query<&TileType>,
 ) {
     for event in move_player_events.iter() {
         let (mut player_coords, mut player_transform, parent, maybe_primary_player) =
             player_query.get_mut(event.player).unwrap();
         let (_, level_children, level_pos) = level_query.get(parent.get()).unwrap();
-        for &child in level_children {
-            let Ok((metadata, tile_storage)) = layer_query.get(child) else { continue };
-            if metadata.identifier != "Tiles" {
-                continue;
-            }
-            let did_move = player_movement_logic(
+        for (_, tile_storage) in level_children
+            .iter()
+            .filter_map(|&child| layer_query.get(child).ok())
+            .filter(|(metadata, _)| metadata.identifier == "Tiles")
+        {
+            let movement = player_movement_logic(
                 &tile_storage,
+                &tile_query,
                 &mut player_transform.translation,
                 &mut player_coords,
                 &event.direction,
             );
-            if did_move && maybe_primary_player.is_some() {
+            if movement.is_some() && maybe_primary_player.is_some() {
                 move_neighboring_player_events.send(MoveNeighboringPlayersEvent {
                     grid_coords: level_pos.0,
                     direction: event.direction,
@@ -211,25 +214,35 @@ pub fn move_neighboring_players(
     mut player_query: Query<(&mut GridCoords, &mut Transform), With<Player>>,
     level_query: Query<(&Children, &LevelPosition), With<Handle<LdtkLevel>>>,
     layer_query: Query<(&LayerMetadata, &TileStorage)>,
+    tile_query: Query<&TileType>,
 ) {
     for event in move_neighboring_player_events.iter() {
         for (level_children, _) in level_query
             .iter()
             .filter(|(_, level_pos)| level_pos.0.is_neighbor(event.grid_coords))
         {
-            for &child in level_children {
-                let Ok((metadata, tile_storage)) = layer_query.get(child) else { continue };
-                if metadata.identifier != "Tiles" {
-                    continue;
-                }
-                for &child in level_children {
-                    let Ok((mut player_coords, mut player_transform)) = player_query.get_mut(child) else { continue };
-                    let _did_move = player_movement_logic(
-                        &tile_storage,
-                        &mut player_transform.translation,
-                        &mut player_coords,
-                        &event.direction,
-                    );
+            for (_, tile_storage) in level_children
+                .iter()
+                .filter_map(|&child| layer_query.get(child).ok())
+                .filter(|(metadata, _)| metadata.identifier == "Tiles")
+            {
+                let player_children: Vec<Entity> = level_children
+                    .iter()
+                    .copied()
+                    .filter(|&child| player_query.contains(child))
+                    .collect();
+                for child in player_children {
+                    if let Ok((mut player_coords, mut player_transform)) =
+                        player_query.get_mut(child)
+                    {
+                        let _did_move = player_movement_logic(
+                            &tile_storage,
+                            &tile_query,
+                            &mut player_transform.translation,
+                            &mut player_coords,
+                            &event.direction,
+                        );
+                    }
                 }
             }
         }
@@ -238,19 +251,20 @@ pub fn move_neighboring_players(
 
 fn player_movement_logic(
     tile_storage: &TileStorage,
+    tile_query: &Query<&TileType>,
     player_translation: &mut Vec3,
     player_coords: &mut GridCoords,
     direction: &Direction,
-) -> bool {
+) -> Option<()> {
     let new_coords = *player_coords + direction.unit_grid_coords();
-    if let Some(_tile_entity) =
-        tile_storage.get(&TilePos::new(new_coords.x as u32, new_coords.y as u32))
-    {
-        // TODO: more logic
-        *player_translation += direction.unit_vec().extend(0.) * 32.;
-        *player_coords = new_coords;
-        true
-    } else {
-        false
+    let new_tile_pos = grid_coords_to_tile_pos(new_coords)?;
+    let tile_entity = tile_storage.checked_get(&new_tile_pos)?;
+    let tile_type = tile_query.get(tile_entity).expect("tile entity is a tile");
+    match tile_type {
+        TileType::Wall => return None,
+        _ => {}
     }
+    *player_translation += direction.unit_vec().extend(0.) * crate::GRID_SIZE as f32;
+    *player_coords = new_coords;
+    Some(())
 }

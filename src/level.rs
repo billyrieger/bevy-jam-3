@@ -13,6 +13,7 @@ impl Plugin for LevelPlugin {
             .add_event::<LoadLevelEvent>()
             .register_ldtk_int_cell::<FloorBundle>(1)
             .register_ldtk_int_cell::<GoalBundle>(2)
+            .register_ldtk_int_cell::<WallBundle>(3)
             .add_system(setup.in_schedule(OnEnter(GameState::InGame)))
             .add_systems(
                 (
@@ -31,12 +32,6 @@ impl Plugin for LevelPlugin {
 // ===================
 // ==== RESOURCES ====
 // ===================
-
-#[derive(Resource)]
-struct LevelSpawnCountdown {
-    timer: Timer,
-    level_num: i32,
-}
 
 #[derive(Resource, Default)]
 pub struct ActiveLevel {
@@ -64,6 +59,12 @@ impl ActiveLevel {
     }
 }
 
+#[derive(Resource)]
+struct LevelSpawnCountdown {
+    timer: Timer,
+    level_num: i32,
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct MetaGridPos {
     pub row: i32,
@@ -78,24 +79,35 @@ impl MetaGridPos {
     pub fn is_neighbor(&self, other: Self) -> bool {
         (self.row - other.row).abs() + (self.col - other.col).abs() == 1
     }
-
-    pub fn neighbors(&self) -> [Self; 8] {
-        [
-            Self::new(self.row - 1, self.col - 1),
-            Self::new(self.row - 1, self.col),
-            Self::new(self.row - 1, self.col + 1),
-            Self::new(self.row, self.col - 1),
-            Self::new(self.row, self.col + 1),
-            Self::new(self.row + 1, self.col - 1),
-            Self::new(self.row + 1, self.col),
-            Self::new(self.row + 1, self.col + 1),
-        ]
-    }
 }
 
 // ====================
 // ==== COMPONENTS ====
 // ====================
+
+#[derive(Component)]
+pub enum TileType {
+    Floor,
+    Goal,
+    Wall,
+}
+
+impl From<IntGridCell> for TileType {
+    fn from(int_grid_cell: IntGridCell) -> Self {
+        match int_grid_cell.value {
+            1 => Self::Floor,
+            2 => Self::Goal,
+            3 => Self::Wall,
+            _ => panic!("unknown tile type"),
+        }
+    }
+}
+
+#[derive(Bundle, LdtkIntCell)]
+struct GameTileBundle {
+    #[from_int_grid_cell]
+    tile_type: TileType,
+}
 
 #[derive(Component, Default)]
 pub struct Floor;
@@ -103,6 +115,8 @@ pub struct Floor;
 #[derive(Bundle, LdtkIntCell)]
 pub struct FloorBundle {
     floor: Floor,
+    #[from_int_grid_cell]
+    tile_type: TileType,
 }
 
 #[derive(Component, Default)]
@@ -111,6 +125,18 @@ pub struct Goal;
 #[derive(Bundle, LdtkIntCell)]
 pub struct GoalBundle {
     goal: Goal,
+    #[from_int_grid_cell]
+    tile_type: TileType,
+}
+
+#[derive(Component, Default)]
+pub struct Wall;
+
+#[derive(Bundle, LdtkIntCell)]
+pub struct WallBundle {
+    wall: Wall,
+    #[from_int_grid_cell]
+    tile_type: TileType,
 }
 
 #[derive(Component)]
