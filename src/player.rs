@@ -1,5 +1,5 @@
 use crate::{
-    level::{LevelPosition, MetaGridPos, TileType},
+    level::{LevelPosition, LevelSpawnCountdown, MetaGridPos, TileType},
     util::grid_coords_to_tile_pos,
     GameState,
 };
@@ -20,7 +20,8 @@ impl Plugin for PlayerPlugin {
             .add_systems((add_components_to_primary_player,).in_set(OnUpdate(GameState::InGame)))
             .add_systems(
                 (
-                    send_player_move_event_on_input,
+                    send_player_move_event_on_input
+                        .run_if(not(resource_exists::<LevelSpawnCountdown>())),
                     move_player,
                     move_neighboring_players,
                 )
@@ -209,7 +210,7 @@ fn move_player(
     }
 }
 
-pub fn move_neighboring_players(
+fn move_neighboring_players(
     mut move_neighboring_player_events: EventReader<MoveNeighboringPlayersEvent>,
     mut player_query: Query<(&mut GridCoords, &mut Transform), With<Player>>,
     level_query: Query<(&Children, &LevelPosition), With<Handle<LdtkLevel>>>,

@@ -19,9 +19,14 @@ impl Plugin for LevelPlugin {
                 (
                     load_level,
                     setup_ldtk_levels_on_spawn,
-                    add_goal_sensor,
-                    load_next_level_on_goal,
-                    debug,
+                    add_goal_sensors,
+                )
+                    .in_set(OnUpdate(GameState::InGame)),
+            )
+            .add_systems(
+                (
+                    update_goal_tile_status,
+                    check_all_goal_tiles.run_if(any_with_component::<Goal>()),
                     level_countdown_timer.run_if(resource_exists::<LevelSpawnCountdown>()),
                 )
                     .in_set(OnUpdate(GameState::InGame)),
@@ -41,7 +46,6 @@ pub struct ActiveLevel {
     pub item_width_px: i32,
     pub item_height_px: i32,
     pub initial_placement: HashMap<MetaGridPos, String>,
-    pub active_placement: HashMap<MetaGridPos, Entity>,
 }
 
 impl ActiveLevel {
@@ -60,9 +64,9 @@ impl ActiveLevel {
 }
 
 #[derive(Resource)]
-struct LevelSpawnCountdown {
-    timer: Timer,
-    level_num: i32,
+pub struct LevelSpawnCountdown {
+    pub timer: Timer,
+    pub level_num: i32,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
@@ -120,7 +124,9 @@ pub struct FloorBundle {
 }
 
 #[derive(Component, Default)]
-pub struct Goal;
+pub struct Goal {
+    activated: bool,
+}
 
 #[derive(Bundle, LdtkIntCell)]
 pub struct GoalBundle {
@@ -174,6 +180,8 @@ fn load_level(
     mut event_reader: EventReader<LoadLevelEvent>,
 ) {
     if let Some(event) = event_reader.iter().next() {
+        commands.remove_resource::<LevelSpawnCountdown>();
+
         let (mut level_set, ldtk_handle) = ldtk_world_query.single_mut();
         let ldtk_asset = ldtk_assets.get(&ldtk_handle).expect("ldtk asset exists");
 
@@ -216,6 +224,7 @@ fn load_level(
                 item_height_px = item_height_px.max(level.px_hei);
                 initial_placement.insert(MetaGridPos::new(row, col), level.iid.clone());
             });
+
         level_set.iids = initial_placement.values().cloned().collect();
         commands.insert_resource(ActiveLevel {
             level_num: event.level_num,
@@ -224,8 +233,6 @@ fn load_level(
             item_width_px,
             item_height_px,
             initial_placement,
-            // this is filled with entities as the LDtk levels are spawned
-            active_placement: HashMap::new(),
         });
     }
     event_reader.clear();
@@ -233,7 +240,7 @@ fn load_level(
 
 fn setup_ldtk_levels_on_spawn(
     mut commands: Commands,
-    mut active_level: ResMut<ActiveLevel>,
+    active_level: ResMut<ActiveLevel>,
     ldtk_level_assets: Res<Assets<LdtkLevel>>,
     mut ldtk_level_query: Query<
         (Entity, &Handle<LdtkLevel>, &mut Transform),
@@ -249,7 +256,6 @@ fn setup_ldtk_levels_on_spawn(
             .iter()
             .find(|(_pos, iid)| **iid == ldtk_level.level.iid)
             .expect("level iid exists in active level");
-        active_level.active_placement.insert(grid_pos, level_entity);
         commands
             .entity(level_entity)
             .insert(LevelPosition(grid_pos));
@@ -257,7 +263,7 @@ fn setup_ldtk_levels_on_spawn(
     }
 }
 
-fn add_goal_sensor(mut commands: Commands, goal_query: Query<Entity, Added<Goal>>) {
+fn add_goal_sensors(mut commands: Commands, goal_query: Query<Entity, Added<Goal>>) {
     for entity in &goal_query {
         commands.entity(entity).insert((
             Collider::cuboid(8., 8.),
@@ -267,40 +273,49 @@ fn add_goal_sensor(mut commands: Commands, goal_query: Query<Entity, Added<Goal>
     }
 }
 
-fn load_next_level_on_goal(
-    mut commands: Commands,
-    active_level: Res<ActiveLevel>,
-    level_spawn_countdown: Option<Res<LevelSpawnCountdown>>,
+fn update_goal_tile_status(
     player_query: Query<&Player>,
-    goal_query: Query<&Goal>,
+    mut goal_query: Query<&mut Goal>,
     mut collision_events: EventReader<CollisionEvent>,
-    // mut event_writer: EventWriter<LoadLevelEvent>,
 ) {
-    // only continue if we're not already waiting to load a new level
-    if level_spawn_countdown.is_none() {
-        for event in collision_events.iter() {
-            match *event {
-                CollisionEvent::Started(a, b, _) => {
-                    if player_query.contains(a) && goal_query.contains(b)
-                        || player_query.contains(b) && goal_query.contains(a)
-                    {
-                        // event_writer.send(LoadLevelEvent {
-                        //     level_num: active_level.level_num + 1,
-                        // });
-                        commands.insert_resource(LevelSpawnCountdown {
-                            timer: Timer::from_seconds(LEVEL_SPAWN_DELAY_SEC, TimerMode::Once),
-                            level_num: active_level.level_num + 1,
-                        });
-                    }
+    for event in collision_events.iter() {
+        let event_started = matches!(event, CollisionEvent::Started(_, _, _));
+        match *event {
+            CollisionEvent::Started(a, b, _) | CollisionEvent::Stopped(a, b, _) => {
+                if player_query.contains(a) && goal_query.contains(b)
+                    || player_query.contains(b) && goal_query.contains(a)
+                {
+                    let mut goal = if goal_query.contains(a) {
+                        goal_query.get_mut(a).unwrap()
+                    } else {
+                        goal_query.get_mut(b).unwrap()
+                    };
+                    goal.activated = event_started;
                 }
-                CollisionEvent::Stopped(_, _, _) => {}
             }
         }
     }
 }
 
-fn level_countdown_timer(
+fn check_all_goal_tiles(
     mut commands: Commands,
+    active_level: Res<ActiveLevel>,
+    level_spawn_countdown: Option<Res<LevelSpawnCountdown>>,
+    goal_query: Query<&Goal>,
+) {
+    // only continue if we're not already waiting to load a new level
+    if level_spawn_countdown.is_some() {
+        return;
+    }
+    if goal_query.iter().all(|goal| goal.activated) {
+        commands.insert_resource(LevelSpawnCountdown {
+            timer: Timer::from_seconds(LEVEL_SPAWN_DELAY_SEC, TimerMode::Once),
+            level_num: active_level.level_num + 1,
+        });
+    }
+}
+
+fn level_countdown_timer(
     time: Res<Time>,
     mut level_spawn_countdown: ResMut<LevelSpawnCountdown>,
     mut load_level_events: EventWriter<LoadLevelEvent>,
@@ -310,15 +325,8 @@ fn level_countdown_timer(
         .tick(time.delta())
         .just_finished()
     {
-        commands.remove_resource::<LevelSpawnCountdown>();
         load_level_events.send(LoadLevelEvent {
             level_num: level_spawn_countdown.level_num,
         })
-    }
-}
-
-fn debug(input: Res<Input<KeyCode>>, mut event_writer: EventWriter<LoadLevelEvent>) {
-    if input.just_pressed(KeyCode::Space) {
-        event_writer.send(LoadLevelEvent { level_num: 0 })
     }
 }
