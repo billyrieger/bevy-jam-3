@@ -7,10 +7,8 @@ use bevy::{
         },
         view::RenderLayers,
     },
-    sprite,
     ui::RelativeCursorPosition,
 };
-use bevy_ecs_ldtk::{LdtkAsset, LdtkLevel};
 
 use crate::{
     level::{ActiveLevel, LevelPosition, MetaGridPos},
@@ -94,8 +92,7 @@ fn swap_levels(
             if level_pos.0 == event.from_pos {
                 *level_pos = LevelPosition(event.to_pos);
                 transform.translation = active_level.get_translation(event.to_pos).extend(0.);
-            }
-            else if level_pos.0 == event.to_pos {
+            } else if level_pos.0 == event.to_pos {
                 *level_pos = LevelPosition(event.from_pos);
                 transform.translation = active_level.get_translation(event.from_pos).extend(0.);
             }
@@ -141,10 +138,15 @@ fn setup_image_render_target(mut commands: Commands, mut images: ResMut<Assets<I
     commands
         .spawn((DragSprite, RenderLayers::layer(DRAG_RENDER_LAYER)))
         .insert(SpriteBundle {
+            sprite: Sprite {
+                color: Color::rgba(1., 1., 1., 0.5),
+                ..default()
+            },
             texture: image_handle.clone(),
             visibility: Visibility::Hidden,
             ..default()
-        });
+        })
+        .insert(Transform::from_translation(Vec3::new(0., 0., 10.)));
 }
 
 fn spawn_ui_root(mut commands: Commands) {
@@ -275,7 +277,7 @@ fn drag(
         let mut drag_sprite_transform = drag_sprite.single_mut();
         // round the mouse coords to the nearest pixel to ensure pixel art is crisp
         drag_sprite_transform.translation =
-            Vec3::new(mouse_world_pos.x.round(), mouse_world_pos.y.round(), 0.);
+            Vec3::new(mouse_world_pos.x.round(), mouse_world_pos.y.round(), 10.);
     }
 }
 
