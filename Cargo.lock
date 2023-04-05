@@ -282,7 +282,7 @@ dependencies = [
 
 [[package]]
 name = "bevy-jam-3"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "bevy",
  "bevy_asset_loader",
