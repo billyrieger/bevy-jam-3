@@ -29,7 +29,7 @@ impl Plugin for DragPlugin {
                     spawn_drag_areas.run_if(resource_changed::<ActiveLevel>()),
                     update_cursor_icon,
                     begin_drag.run_if(not(resource_exists::<Dragging>())),
-                    drag.run_if(resource_exists::<Dragging>()),
+                    drag_icon,
                     end_drag.run_if(resource_exists::<Dragging>()),
                 )
                     .in_set(OnUpdate(GameState::InGame)),
@@ -87,7 +87,6 @@ fn swap_levels(
     mut ldtk_levels: Query<(&mut LevelPosition, &mut Transform)>,
 ) {
     for event in swap_events.iter() {
-        println!("asfd");
         for (mut level_pos, mut transform) in &mut ldtk_levels {
             if level_pos.0 == event.from_pos {
                 *level_pos = LevelPosition(event.to_pos);
@@ -176,8 +175,8 @@ fn spawn_drag_areas(
         .insert(NodeBundle {
             style: Style {
                 size: Size::new(
-                    Val::Px(active_level.width_px() as f32),
-                    Val::Px(active_level.height_px() as f32),
+                    Val::Px(active_level.total_width_px() as f32),
+                    Val::Px(active_level.total_height_px() as f32),
                 ),
                 ..default()
             },
@@ -193,8 +192,8 @@ fn spawn_drag_areas(
                 .insert(NodeBundle {
                     style: Style {
                         size: Size::new(
-                            Val::Px((active_level.item_width_px - 2 * crate::GRID_SIZE) as f32),
-                            Val::Px((active_level.item_height_px - 2 * crate::GRID_SIZE) as f32),
+                            Val::Px(active_level.unpadded_item_width_px() as f32),
+                            Val::Px(active_level.unpadded_item_height_px() as f32),
                         ),
                         margin: UiRect::all(Val::Px(crate::GRID_SIZE as f32)),
                         position_type: PositionType::Absolute,
@@ -237,7 +236,7 @@ fn begin_drag(
     active_level: Res<ActiveLevel>,
     input: Res<Input<MouseButton>>,
     drag_areas: Query<(&RelativeCursorPosition, &DragAreaPosition)>,
-    mut drag_sprite: Query<(&mut Sprite, &mut Visibility), With<DragSprite>>,
+    mut drag_sprite: Query<&mut Sprite, With<DragSprite>>,
 ) {
     if input.just_pressed(MouseButton::Left) {
         for (rel_cursor_pos, drag_area_pos) in drag_areas.iter() {
@@ -245,39 +244,43 @@ fn begin_drag(
                 commands.insert_resource(Dragging {
                     from_pos: drag_area_pos.0,
                 });
-                let (mut sprite, mut visibility) = drag_sprite.single_mut();
+                let mut sprite = drag_sprite.single_mut();
                 let foo = Some(Rect::from_center_size(
                     active_level.get_center_translation_for_texture(drag_area_pos.0),
                     Vec2::new(
-                        active_level.item_width_px as f32,
-                        active_level.item_height_px as f32,
+                        active_level.unpadded_item_width_px() as f32,
+                        active_level.unpadded_item_height_px() as f32,
                     ),
                 ));
-                dbg!(foo);
                 sprite.rect = foo;
-                *visibility = Visibility::Visible;
             }
         }
     }
 }
 
-fn drag(
+fn drag_icon(
+    dragging: Option<Res<Dragging>>,
     windows: Query<&Window>,
     cameras: Query<(&Camera, &GlobalTransform), With<MainCamera>>,
-    mut drag_sprite: Query<&mut Transform, With<DragSprite>>,
+    mut drag_sprite: Query<(&mut Transform, &mut Visibility), With<DragSprite>>,
 ) {
-    let window = windows.single();
-    let (camera, camera_transform) = cameras.single();
-    // from https://bevy-cheatbook.github.io/cookbook/cursor2world.html
-    if let Some(mouse_world_pos) = window
-        .cursor_position()
-        .and_then(|cursor| camera.viewport_to_world(camera_transform, cursor))
-        .map(|ray| ray.origin.truncate())
-    {
-        let mut drag_sprite_transform = drag_sprite.single_mut();
-        // round the mouse coords to the nearest pixel to ensure pixel art is crisp
-        drag_sprite_transform.translation =
-            Vec3::new(mouse_world_pos.x.round(), mouse_world_pos.y.round(), 10.);
+    let (mut sprite_transform, mut sprite_visibility) = drag_sprite.single_mut();
+    if dragging.is_some() {
+        // from https://bevy-cheatbook.github.io/cookbook/cursor2world.html
+        let window = windows.single();
+        let (camera, camera_transform) = cameras.single();
+        if let Some(mouse_world_pos) = window
+            .cursor_position()
+            .and_then(|cursor| camera.viewport_to_world(camera_transform, cursor))
+            .map(|ray| ray.origin.truncate())
+        {
+            // round the mouse coords to the nearest pixel to ensure pixel art is crisp
+            sprite_transform.translation =
+                Vec3::new(mouse_world_pos.x.round(), mouse_world_pos.y.round(), 10.);
+        }
+        *sprite_visibility = Visibility::Visible;
+    } else {
+        *sprite_visibility = Visibility::Hidden;
     }
 }
 

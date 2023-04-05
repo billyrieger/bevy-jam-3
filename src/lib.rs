@@ -44,8 +44,8 @@ impl Plugin for GamePlugin {
             // third-party plugins
             .add_plugin(LdtkPlugin)
             .add_plugin(RapierPhysicsPlugin::<NoUserData>::default())
-            .add_plugin(bevy::diagnostic::FrameTimeDiagnosticsPlugin)
-            .add_plugin(bevy::diagnostic::LogDiagnosticsPlugin::default())
+            // .add_plugin(bevy::diagnostic::FrameTimeDiagnosticsPlugin)
+            // .add_plugin(bevy::diagnostic::LogDiagnosticsPlugin::default())
             // .add_plugin(RapierDebugRenderPlugin::default())
             .insert_resource(RapierConfiguration {
                 gravity: Vec2::ZERO,

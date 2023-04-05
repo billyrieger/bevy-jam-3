@@ -46,11 +46,20 @@ pub struct ActiveLevel {
 }
 
 impl ActiveLevel {
-    pub fn width_px(&self) -> i32 {
+    pub fn total_width_px(&self) -> i32 {
         self.grid_width * self.item_width_px
     }
-    pub fn height_px(&self) -> i32 {
+
+    pub fn total_height_px(&self) -> i32 {
         self.grid_height * self.item_height_px
+    }
+
+    pub fn unpadded_item_width_px(&self) -> i32 {
+        self.item_width_px - 2 * crate::GRID_SIZE
+    }
+
+    pub fn unpadded_item_height_px(&self) -> i32 {
+        self.item_height_px - 2 * crate::GRID_SIZE
     }
 
     pub fn get_center_translation_for_texture(&self, grid_pos: MetaGridPos) -> Vec2 {
@@ -197,7 +206,7 @@ fn setup(
             ..default()
         })
         .insert(RenderLayers::layer(1));
-    event_writer.send(LoadLevelEvent { level_num: 5 });
+    event_writer.send(LoadLevelEvent { level_num: 0 });
 }
 
 fn load_level(
