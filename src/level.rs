@@ -14,6 +14,7 @@ impl Plugin for LevelPlugin {
             .register_ldtk_int_cell::<FloorBundle>(1)
             .register_ldtk_int_cell::<GoalBundle>(2)
             .register_ldtk_int_cell::<WallBundle>(3)
+            .register_ldtk_int_cell::<BoundaryBundle>(4)
             .add_system(setup.in_schedule(OnEnter(GameState::InGame)))
             .add_systems(
                 (
@@ -49,6 +50,13 @@ pub struct ActiveLevel {
 }
 
 impl ActiveLevel {
+    pub fn width_px(&self) -> i32 {
+        self.grid_width * self.item_width_px
+    }
+    pub fn height_px(&self) -> i32 {
+        self.grid_height * self.item_height_px
+    }
+
     fn get_translation(&self, grid_pos: MetaGridPos) -> Vec2 {
         let col_offset =
             (grid_pos.col as f32 - 0.5 * (self.grid_width as f32 - 1.)) * self.item_width_px as f32;
@@ -90,10 +98,14 @@ impl MetaGridPos {
 // ====================
 
 #[derive(Component)]
+pub struct LevelPosition(pub MetaGridPos);
+
+#[derive(Component)]
 pub enum TileType {
     Floor,
     Goal,
     Wall,
+    Boundary,
 }
 
 impl From<IntGridCell> for TileType {
@@ -102,6 +114,7 @@ impl From<IntGridCell> for TileType {
             1 => Self::Floor,
             2 => Self::Goal,
             3 => Self::Wall,
+            4 => Self::Boundary,
             _ => panic!("unknown tile type"),
         }
     }
@@ -145,8 +158,15 @@ pub struct WallBundle {
     tile_type: TileType,
 }
 
-#[derive(Component)]
-pub struct LevelPosition(pub MetaGridPos);
+#[derive(Component, Default)]
+pub struct Boundary;
+
+#[derive(Bundle, LdtkIntCell)]
+pub struct BoundaryBundle {
+    boundary: Boundary,
+    #[from_int_grid_cell]
+    tile_type: TileType,
+}
 
 // ================
 // ==== EVENTS ====

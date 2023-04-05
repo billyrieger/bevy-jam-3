@@ -191,7 +191,7 @@ fn move_player(
         for (_, tile_storage) in level_children
             .iter()
             .filter_map(|&child| layer_query.get(child).ok())
-            .filter(|(metadata, _)| metadata.identifier == "Tiles")
+            .filter(|(metadata, _)| metadata.identifier == "TileData")
         {
             let movement = player_movement_logic(
                 &tile_storage,
@@ -225,7 +225,7 @@ fn move_neighboring_players(
             for (_, tile_storage) in level_children
                 .iter()
                 .filter_map(|&child| layer_query.get(child).ok())
-                .filter(|(metadata, _)| metadata.identifier == "Tiles")
+                .filter(|(metadata, _)| metadata.identifier == "TileData")
             {
                 let player_children: Vec<Entity> = level_children
                     .iter()
@@ -262,7 +262,7 @@ fn player_movement_logic(
     let tile_entity = tile_storage.checked_get(&new_tile_pos)?;
     let tile_type = tile_query.get(tile_entity).expect("tile entity is a tile");
     match tile_type {
-        TileType::Wall => return None,
+        TileType::Wall | TileType::Boundary => return None,
         _ => {}
     }
     *player_translation += direction.unit_vec().extend(0.) * crate::GRID_SIZE as f32;
