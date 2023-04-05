@@ -5,7 +5,7 @@ pub mod menu;
 pub mod player;
 pub mod util;
 
-use bevy::prelude::*;
+use bevy::{prelude::*, render::view::RenderLayers};
 use bevy_ecs_ldtk::prelude::*;
 #[cfg(not(debug_assertions))]
 use bevy_embedded_assets::EmbeddedAssetPlugin;
@@ -14,6 +14,9 @@ use bevy_rapier2d::prelude::*;
 pub const WIDTH: i32 = 640;
 pub const HEIGHT: i32 = 480;
 pub const GRID_SIZE: i32 = 32;
+
+pub const MAIN_RENDER_LAYER: u8 = 0;
+pub const DRAG_RENDER_LAYER: u8 = 1;
 
 #[derive(States, Clone, Default, Debug, PartialEq, Eq, Hash)]
 enum GameState {
@@ -41,6 +44,8 @@ impl Plugin for GamePlugin {
             // third-party plugins
             .add_plugin(LdtkPlugin)
             .add_plugin(RapierPhysicsPlugin::<NoUserData>::default())
+            .add_plugin(bevy::diagnostic::FrameTimeDiagnosticsPlugin)
+            .add_plugin(bevy::diagnostic::LogDiagnosticsPlugin::default())
             // .add_plugin(RapierDebugRenderPlugin::default())
             .insert_resource(RapierConfiguration {
                 gravity: Vec2::ZERO,
@@ -71,5 +76,9 @@ pub struct MainCamera;
 // =================
 
 fn setup_camera(mut commands: Commands) {
-    commands.spawn((MainCamera, Camera2dBundle::default()));
+    commands.spawn((
+        MainCamera,
+        Camera2dBundle::default(),
+        RenderLayers::from_layers(&[MAIN_RENDER_LAYER, DRAG_RENDER_LAYER]),
+    ));
 }

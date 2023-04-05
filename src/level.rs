@@ -1,5 +1,5 @@
 use crate::{loading::GameAssets, player::Player, GameState};
-use bevy::{prelude::*, utils::HashMap};
+use bevy::{prelude::*, render::view::RenderLayers, utils::HashMap};
 use bevy_ecs_ldtk::prelude::*;
 use bevy_rapier2d::prelude::*;
 
@@ -17,11 +17,7 @@ impl Plugin for LevelPlugin {
             .register_ldtk_int_cell::<BoundaryBundle>(4)
             .add_system(setup.in_schedule(OnEnter(GameState::InGame)))
             .add_systems(
-                (
-                    load_level,
-                    setup_ldtk_levels_on_spawn,
-                    add_goal_sensors,
-                )
+                (load_level, setup_ldtk_levels_on_spawn, add_goal_sensors)
                     .in_set(OnUpdate(GameState::InGame)),
             )
             .add_systems(
@@ -57,7 +53,16 @@ impl ActiveLevel {
         self.grid_height * self.item_height_px
     }
 
-    fn get_translation(&self, grid_pos: MetaGridPos) -> Vec2 {
+    pub fn get_center_translation_for_texture(&self, grid_pos: MetaGridPos) -> Vec2 {
+        let col_offset =
+            (grid_pos.col as f32 - 0.5 * (self.grid_width as f32 - 1.)) * self.item_width_px as f32;
+        let row_offset = (grid_pos.row as f32 - 0.5 * (self.grid_height as f32 - 1.))
+            * self.item_height_px as f32;
+        Vec2::new(crate::WIDTH as f32, crate::HEIGHT as f32) / 2.
+            + Vec2::new(col_offset, row_offset)
+    }
+
+    pub fn get_translation(&self, grid_pos: MetaGridPos) -> Vec2 {
         let col_offset =
             (grid_pos.col as f32 - 0.5 * (self.grid_width as f32 - 1.)) * self.item_width_px as f32;
         // row offset is flipped
@@ -185,12 +190,14 @@ fn setup(
     game_assets: Res<GameAssets>,
     mut event_writer: EventWriter<LoadLevelEvent>,
 ) {
-    commands.spawn(LdtkWorldBundle {
-        ldtk_handle: game_assets.levels.clone(),
-        level_set: LevelSet::default(),
-        ..default()
-    });
-    event_writer.send(LoadLevelEvent { level_num: 0 });
+    commands
+        .spawn(LdtkWorldBundle {
+            ldtk_handle: game_assets.levels.clone(),
+            level_set: LevelSet::default(),
+            ..default()
+        })
+        .insert(RenderLayers::layer(1));
+    event_writer.send(LoadLevelEvent { level_num: 5 });
 }
 
 fn load_level(
