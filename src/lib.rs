@@ -4,6 +4,7 @@ pub mod loading;
 pub mod menu;
 pub mod player;
 pub mod util;
+pub mod boundary;
 
 use bevy::{prelude::*, render::view::RenderLayers};
 use bevy_ecs_ldtk::prelude::*;
