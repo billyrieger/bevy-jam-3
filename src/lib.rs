@@ -10,6 +10,7 @@ use bevy_ecs_ldtk::prelude::*;
 #[cfg(not(debug_assertions))]
 use bevy_embedded_assets::EmbeddedAssetPlugin;
 use bevy_rapier2d::prelude::*;
+use bevy_tweening::*;
 
 pub const WIDTH: i32 = 640;
 pub const HEIGHT: i32 = 480;
@@ -44,6 +45,7 @@ impl Plugin for GamePlugin {
             // third-party plugins
             .add_plugin(LdtkPlugin)
             .add_plugin(RapierPhysicsPlugin::<NoUserData>::default())
+            .add_plugin(TweeningPlugin)
             // .add_plugin(bevy::diagnostic::FrameTimeDiagnosticsPlugin)
             // .add_plugin(bevy::diagnostic::LogDiagnosticsPlugin::default())
             // .add_plugin(RapierDebugRenderPlugin::default())

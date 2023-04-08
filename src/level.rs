@@ -46,6 +46,13 @@ pub struct ActiveLevel {
 }
 
 impl ActiveLevel {
+    pub fn grid_coords_to_center_translation(&self, grid_coords: GridCoords) -> Vec3 {
+        let _center_offset = Vec2::new(-self.item_width_px as f32, self.item_height_px as f32) / 2.;
+        let _x = grid_coords.x * crate::GRID_SIZE - self.item_width_px / 2;
+        let _y = grid_coords.y * crate::GRID_SIZE - self.item_height_px / 2;
+        todo!()
+    }
+
     pub fn total_width_px(&self) -> i32 {
         self.grid_width * self.item_width_px
     }
