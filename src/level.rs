@@ -1,6 +1,12 @@
-use crate::{loading::GameAssets, player::Player, GameState};
+use crate::{
+    loading::GameAssets,
+    player::{Player, PrimaryPlayer},
+    util::grid_coords_to_tile_pos,
+    GameState,
+};
 use bevy::{prelude::*, render::view::RenderLayers, utils::HashMap};
 use bevy_ecs_ldtk::prelude::*;
+use bevy_ecs_tilemap::prelude::*;
 use bevy_rapier2d::prelude::*;
 
 const LEVEL_SPAWN_DELAY_SEC: f32 = 0.5;
@@ -18,6 +24,15 @@ impl Plugin for LevelPlugin {
             .add_system(setup.in_schedule(OnEnter(GameState::InGame)))
             .add_systems(
                 (load_level, setup_ldtk_levels_on_spawn, add_goal_sensors)
+                    .in_set(OnUpdate(GameState::InGame)),
+            )
+            .add_systems(
+                (
+                    clear_boundary_arrows,
+                    update_boundary_arrows_pointing_from
+                        .run_if(any_with_component::<PrimaryPlayer>()),
+                )
+                    .chain()
                     .in_set(OnUpdate(GameState::InGame)),
             )
             .add_systems(
@@ -40,6 +55,8 @@ pub struct ActiveLevel {
     pub level_num: i32,
     pub grid_width: i32,
     pub grid_height: i32,
+    pub item_grid_width: i32,
+    pub item_grid_height: i32,
     pub item_width_px: i32,
     pub item_height_px: i32,
     pub initial_placement: HashMap<MetaGridPos, String>,
@@ -98,7 +115,7 @@ pub struct LevelSpawnCountdown {
     pub level_num: i32,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct MetaGridPos {
     pub row: i32,
     pub col: i32,
@@ -213,7 +230,7 @@ fn setup(
             ..default()
         })
         .insert(RenderLayers::layer(1));
-    event_writer.send(LoadLevelEvent { level_num: 0 });
+    event_writer.send(LoadLevelEvent { level_num: 4 });
 }
 
 fn load_level(
@@ -273,6 +290,8 @@ fn load_level(
             level_num: event.level_num,
             grid_width,
             grid_height,
+            item_grid_width: item_width_px / crate::GRID_SIZE,
+            item_grid_height: item_height_px / crate::GRID_SIZE,
             item_width_px,
             item_height_px,
             initial_placement,
@@ -313,6 +332,83 @@ fn add_goal_sensors(mut commands: Commands, goal_query: Query<Entity, Added<Goal
             Sensor,
             ActiveEvents::COLLISION_EVENTS,
         ));
+    }
+}
+
+fn clear_boundary_arrows(
+    layers: Query<(&LayerMetadata, &TileStorage)>,
+    mut tiles: Query<&mut TileVisible>,
+) {
+    for (metadata, tile_storage) in &layers {
+        if ["ArrowsFrom", "ArrowsTo"].contains(&&*metadata.identifier) {
+            for tile_entity in tile_storage.iter().filter_map(|&t| t) {
+                let mut visible = tiles.get_mut(tile_entity).expect("tile entity is a tile");
+                visible.0 = false;
+            }
+        }
+    }
+}
+
+fn update_boundary_arrows_pointing_from(
+    active_level: Res<ActiveLevel>,
+    levels: Query<(&Children, &LevelPosition)>,
+    layers: Query<(&LayerMetadata, &TileStorage)>,
+    primary_players: Query<Entity, With<PrimaryPlayer>>,
+    mut tiles: Query<&mut TileVisible>,
+) {
+    let (primary_level_children, primary_level_pos) = levels
+        .iter()
+        .find(|(children, _)| {
+            children
+                .iter()
+                .any(|&child| primary_players.contains(child))
+        })
+        .expect("primary player exists in a level");
+
+    // show the arrows pointing away from the active player
+    let (_, arrows_tile_storage) = primary_level_children
+        .iter()
+        .filter_map(|&child| layers.get(child).ok())
+        .find(|(metadata, _)| metadata.identifier == "ArrowsFrom")
+        .expect("ArrowsFrom layer entity exists");
+
+    let mut set_arrow_visible = |grid_coords: GridCoords| {
+        let tile_pos = grid_coords_to_tile_pos(grid_coords).expect("edge coords are in bounds");
+        let arrow_tile = arrows_tile_storage
+            .get(&tile_pos)
+            .expect("arrow tile exists at edge coords");
+        let mut tile_visible = tiles
+            .get_mut(arrow_tile)
+            .expect("arrow tile matches tile query");
+        tile_visible.0 = true;
+    };
+
+    // arrows are along the edges of the level but NOT at the corners, so skip the first and last indices.
+    // "normally" the range would be 0..width. instead we do 1..(width - 1).
+
+    // top edge
+    if primary_level_pos.0.row > 0 {
+        (1..(active_level.item_grid_width - 1))
+            .map(|x| GridCoords::new(x, active_level.item_grid_height - 1))
+            .for_each(&mut set_arrow_visible);
+    }
+    // bottom edge
+    if primary_level_pos.0.row < active_level.grid_height - 1 {
+        (1..(active_level.item_grid_width - 1))
+            .map(|x| GridCoords::new(x, 0))
+            .for_each(&mut set_arrow_visible);
+    }
+    // left edge
+    if primary_level_pos.0.col > 0 {
+        (1..(active_level.item_grid_height - 1))
+            .map(|y| GridCoords::new(0, y))
+            .for_each(&mut set_arrow_visible);
+    }
+    // right edge
+    if primary_level_pos.0.col < active_level.grid_width - 1 {
+        (1..(active_level.item_grid_height - 1))
+            .map(|y| GridCoords::new(active_level.item_grid_width - 1, y))
+            .for_each(&mut set_arrow_visible);
     }
 }
 
