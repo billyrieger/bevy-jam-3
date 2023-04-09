@@ -1,4 +1,4 @@
-use std::collections::VecDeque;
+use std::{collections::VecDeque, time::Duration};
 
 use crate::{
     level::{
@@ -82,7 +82,7 @@ impl Direction {
 
 struct QueuedMovement {
     direction: Direction,
-    delay: Timer,
+    delay: Duration,
 }
 
 // ===================
@@ -239,28 +239,31 @@ fn unlock_player_movement(
 
 fn process_queued_movement(
     mut commands: Commands,
-    time: Res<Time>,
     mut entities: Query<(Entity, &Transform, &mut GridCoords, &mut QueuedMovements)>,
 ) {
     for (entity, transform, mut grid_coords, mut queued_movements) in &mut entities {
-        if let Some(mut movement) = queued_movements.0.pop_front() {
-            if !movement.delay.tick(time.delta()).just_finished() {
-                queued_movements.0.push_front(movement);
-                continue;
-            }
+        if let Some(movement) = queued_movements.0.pop_front() {
             *grid_coords += movement.direction.unit_grid_coords();
             let delta = movement.direction.unit_vec().extend(0.) * GRID_SIZE as f32;
             let tween = Tween::new(
                 EaseFunction::QuadraticInOut,
-                std::time::Duration::from_secs_f32(0.1),
+                Duration::from_secs_f32(0.1),
                 TransformPositionLens {
                     start: transform.translation,
                     end: transform.translation + delta,
                 },
             );
-            commands
-                .entity(entity)
-                .insert((Animator::new(tween), IsMoving));
+            if movement.delay > Duration::ZERO {
+                commands.entity(entity).insert((
+                    Animator::new(Delay::new(movement.delay).then(tween)),
+                    IsMoving,
+                ));
+            } else {
+                commands.entity(entity).insert((
+                    Animator::new(tween),
+                    IsMoving,
+                ));
+            }
         }
     }
 }
@@ -292,7 +295,7 @@ fn try_move_player(
                 .0
                 .push_back(QueuedMovement {
                     direction: event.direction,
-                    delay: Timer::from_seconds(0., TimerMode::Once),
+                    delay: Duration::from_secs_f32(0.),
                 });
             move_neighboring_players_events.send(TryMoveNeighboringPlayersEvent {
                 grid_coords: level_pos.0,
@@ -335,7 +338,7 @@ fn try_move_neighboring_players(
                             .0
                             .push_back(QueuedMovement {
                                 direction: event.direction,
-                                delay: Timer::from_seconds(0.1, TimerMode::Once),
+                                delay: Duration::from_secs_f32(0.1),
                             });
                         level_is_active.0 = true;
                     }

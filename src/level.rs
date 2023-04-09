@@ -36,10 +36,7 @@ impl Plugin for LevelPlugin {
             .add_systems(
                 (
                     update_goal_tile_status,
-                    check_all_goal_tiles.run_if(
-                        any_with_component::<Goal>()
-                            .and_then(not(any_with_component::<IsMoving>())),
-                    ),
+                    check_all_goal_tiles.run_if(any_with_component::<Goal>()),
                     level_countdown_timer.run_if(resource_exists::<LevelSpawnCountdown>()),
                 )
                     .in_set(OnUpdate(GameState::InGame)),
@@ -137,6 +134,12 @@ impl MetaLevel {
     pub fn right_boundary_coords(&self) -> impl Iterator<Item = GridCoords> + '_ {
         (1..(self.level_grid_height - 1))
             .map(move |y| GridCoords::new(self.level_grid_width - 1, y))
+    }
+
+    pub fn grid_coords_to_translation(&self, grid_coords: GridCoords) -> Vec2 {
+        let x = grid_coords.x * GRID_SIZE;
+        let y = grid_coords.y * GRID_SIZE;
+        Vec2::new(x as f32, y as f32)
     }
 }
 
@@ -393,26 +396,18 @@ fn add_goal_sensors(mut commands: Commands, goal_query: Query<Entity, Added<Goal
 }
 
 fn update_goal_tile_status(
-    player_query: Query<&Player>,
-    mut goal_query: Query<&mut Goal>,
-    mut collision_events: EventReader<CollisionEvent>,
+    mut goals: Query<(&Parent, &GridCoords, &mut Goal)>,
+    players: Query<(&Parent, &GridCoords), With<Player>>,
+    layers: Query<&Parent, With<LayerMetadata>>,
 ) {
-    for event in collision_events.iter() {
-        let event_started = matches!(event, CollisionEvent::Started(_, _, _));
-        match *event {
-            CollisionEvent::Started(a, b, _) | CollisionEvent::Stopped(a, b, _) => {
-                if player_query.contains(a) && goal_query.contains(b)
-                    || player_query.contains(b) && goal_query.contains(a)
-                {
-                    let mut goal = if goal_query.contains(a) {
-                        goal_query.get_mut(a).unwrap()
-                    } else {
-                        goal_query.get_mut(b).unwrap()
-                    };
-                    goal.activated = event_started;
-                }
-            }
-        }
+    for (goal_parent, goal_coords, mut goal) in &mut goals {
+        let layer_parent = layers
+            .get(goal_parent.get())
+            .expect("goal's parent is a layer");
+        let goal_level = layer_parent.get();
+        goal.activated = players.iter().any(|(player_parent, player_coords)| {
+            player_parent.get() == goal_level && player_coords == goal_coords
+        });
     }
 }
 
@@ -427,6 +422,7 @@ fn check_all_goal_tiles(
         return;
     }
     if goal_query.iter().all(|goal| goal.activated) {
+        println!("done!!!");
         commands.insert_resource(LevelSpawnCountdown {
             timer: Timer::from_seconds(LEVEL_SPAWN_DELAY_SEC, TimerMode::Once),
             level_num: current_level.0.level_num + 1,
