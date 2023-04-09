@@ -200,12 +200,11 @@ fn send_player_move_event_on_input(
 
 fn unlock_player_movement(
     mut commands: Commands,
-    mut players: Query<(Entity, &mut GridCoords, &Transform, &Animator<Transform>, &IsMoving)>,
+    mut players: Query<(Entity, &mut GridCoords, &Animator<Transform>, &IsMoving)>,
 ) {
-    for (entity, mut grid_coords, transform, animator, movement) in &mut players {
+    for (entity, mut grid_coords, animator, movement) in &mut players {
         if animator.tweenable().progress() == 1. {
             *grid_coords = movement.to;
-            dbg!(grid_coords, transform.translation);
             commands.entity(entity).remove::<IsMoving>();
         }
     }
@@ -216,12 +215,7 @@ fn move_player(
     mut move_player_events: EventReader<MovePlayerEvent>,
     mut move_neighboring_players_events: EventWriter<MoveNeighboringPlayersEvent>,
     mut player_query: Query<
-        (
-            Entity,
-            &mut GridCoords,
-            &mut Transform,
-            &Parent,
-        ),
+        (Entity, &mut GridCoords, &mut Transform, &Parent),
         With<PrimaryPlayer>,
     >,
     level_query: Query<(Entity, &Children, &LevelPosition), With<Handle<LdtkLevel>>>,

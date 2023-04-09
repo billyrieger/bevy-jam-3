@@ -1,14 +1,17 @@
 use crate::{
     boundary::{BoundaryEdge, BoundaryPlugin},
     loading::GameAssets,
-    player::Player,
+    player::{Player, PrimaryPlayer},
     GameState,
 };
 use bevy::{prelude::*, render::view::RenderLayers, utils::HashMap};
 use bevy_ecs_ldtk::prelude::*;
+use bevy_ecs_tilemap::prelude::*;
 use bevy_rapier2d::prelude::*;
 
 const LEVEL_SPAWN_DELAY_SEC: f32 = 0.5;
+const ACTIVE_LEVEL_COLOR: Color = Color::rgb(1., 1., 1.);
+const INACTIVE_LEVEL_COLOR: Color = Color::rgba(0.5, 0.5, 0.5, 0.5);
 
 pub struct LevelPlugin;
 
@@ -23,7 +26,12 @@ impl Plugin for LevelPlugin {
             .add_plugin(BoundaryPlugin)
             .add_system(setup.in_schedule(OnEnter(GameState::InGame)))
             .add_systems(
-                (load_level, setup_ldtk_levels_on_spawn, add_goal_sensors)
+                (
+                    load_level,
+                    setup_ldtk_levels_on_spawn,
+                    add_goal_sensors,
+                    darken_inactive_levels,
+                )
                     .in_set(OnUpdate(GameState::InGame)),
             )
             .add_systems(
@@ -152,6 +160,9 @@ impl MetaGridPos {
 
 #[derive(Component)]
 pub struct LevelPosition(pub MetaGridPos);
+
+#[derive(Component)]
+pub struct IsActive(bool);
 
 #[derive(Component)]
 pub enum TileType {
@@ -320,11 +331,12 @@ fn setup_ldtk_levels_on_spawn(
     active_level: ResMut<ActiveLevel>,
     ldtk_level_assets: Res<Assets<LdtkLevel>>,
     mut ldtk_level_query: Query<
-        (Entity, &Handle<LdtkLevel>, &mut Transform),
+        (Entity, &Children, &Handle<LdtkLevel>, &mut Transform),
         Added<Handle<LdtkLevel>>,
     >,
+    primary_players: Query<&PrimaryPlayer>,
 ) {
-    for (level_entity, level_handle, mut level_transform) in &mut ldtk_level_query {
+    for (level_entity, level_children, level_handle, mut level_transform) in &mut ldtk_level_query {
         let ldtk_level = ldtk_level_assets
             .get(&level_handle)
             .expect("ldtk level is loaded");
@@ -333,9 +345,13 @@ fn setup_ldtk_levels_on_spawn(
             .iter()
             .find(|(_pos, iid)| **iid == ldtk_level.level.iid)
             .expect("level iid exists in active level");
+        let is_active = level_children
+            .iter()
+            .any(|child| primary_players.contains(*child));
         commands
             .entity(level_entity)
-            .insert(LevelPosition(grid_pos));
+            .insert(LevelPosition(grid_pos))
+            .insert(IsActive(is_active));
         level_transform.translation = active_level.get_translation(grid_pos).extend(0.);
     }
 }
@@ -394,16 +410,47 @@ fn check_all_goal_tiles(
 
 fn level_countdown_timer(
     time: Res<Time>,
-    mut level_spawn_countdown: ResMut<LevelSpawnCountdown>,
+    mut countdown: ResMut<LevelSpawnCountdown>,
     mut load_level_events: EventWriter<LoadLevelEvent>,
 ) {
-    if level_spawn_countdown
-        .timer
-        .tick(time.delta())
-        .just_finished()
-    {
+    if countdown.timer.tick(time.delta()).just_finished() {
         load_level_events.send(LoadLevelEvent {
-            level_num: level_spawn_countdown.level_num,
+            level_num: countdown.level_num,
         })
+    }
+}
+
+fn darken_inactive_levels(
+    levels: Query<(&Children, &IsActive), Changed<IsActive>>,
+    layers: Query<(&LayerMetadata, &TileStorage)>,
+    primary_players: Query<&PrimaryPlayer>,
+    mut tiles: Query<&mut TileColor>,
+    mut sprites: Query<&mut TextureAtlasSprite>,
+) {
+    for (level_children, level_is_active) in levels.iter().filter(|(children, _)| {
+        children
+            .iter()
+            .all(|child| !primary_players.contains(*child))
+    }) {
+        let color = if level_is_active.0 {
+            ACTIVE_LEVEL_COLOR
+        } else {
+            INACTIVE_LEVEL_COLOR
+        };
+        let (_, tile_storage) = level_children
+            .iter()
+            .filter_map(|child| layers.get(*child).ok())
+            .find(|(metadata, _)| metadata.identifier == "Tiles")
+            .expect("Tiles layer exists");
+        for tile in tile_storage.iter().filter_map(|x| *x) {
+            let mut tile_color = tiles.get_mut(tile).expect("tile is in tile query");
+            tile_color.0 = color;
+        }
+
+        for &child in level_children {
+            if let Ok(mut sprite) = sprites.get_mut(child) {
+                sprite.color = color;
+            }
+        }
     }
 }
