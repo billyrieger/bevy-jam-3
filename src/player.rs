@@ -10,7 +10,6 @@ use crate::{
 use bevy::prelude::*;
 use bevy_ecs_ldtk::prelude::*;
 use bevy_ecs_tilemap::tiles::TileStorage;
-use bevy_rapier2d::prelude::*;
 use bevy_tweening::{lens::TransformPositionLens, *};
 use leafwing_input_manager::prelude::*;
 
@@ -134,21 +133,10 @@ pub struct PlayerBundle {
     #[sprite_sheet_bundle]
     #[bundle]
     sprite_sheet: SpriteSheetBundle,
-    #[with(player_physics_bundle)]
-    #[bundle]
-    physics: (RigidBody, Collider, ActiveEvents),
     #[from_entity_instance]
     entity_instance: EntityInstance,
     #[bundle]
     queued_movements: QueuedMovements,
-}
-
-fn player_physics_bundle(_: &EntityInstance) -> (RigidBody, Collider, ActiveEvents) {
-    (
-        RigidBody::Dynamic,
-        Collider::ball(8.),
-        ActiveEvents::COLLISION_EVENTS,
-    )
 }
 
 // =================

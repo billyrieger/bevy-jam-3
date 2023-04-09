@@ -7,7 +7,6 @@ use crate::{
 use bevy::{prelude::*, render::view::RenderLayers, utils::HashMap};
 use bevy_ecs_ldtk::prelude::*;
 use bevy_ecs_tilemap::prelude::*;
-use bevy_rapier2d::prelude::*;
 
 const LEVEL_SPAWN_DELAY_SEC: f32 = 1.;
 const ACTIVE_LEVEL_COLOR: Color = Color::rgb(1., 1., 1.);
@@ -28,7 +27,6 @@ impl Plugin for LevelPlugin {
                 (
                     load_level,
                     setup_ldtk_levels_on_spawn.run_if(resource_exists::<CurrentMetaLevel>()),
-                    add_goal_sensors,
                     darken_inactive_levels,
                 )
                     .in_set(OnUpdate(GameState::InGame)),
@@ -384,16 +382,6 @@ fn setup_ldtk_levels_on_spawn(
             .insert(LevelPosition(grid_pos))
             .insert(IsActive(is_active));
         level_transform.translation = current_level.0.get_translation(grid_pos).extend(0.);
-    }
-}
-
-fn add_goal_sensors(mut commands: Commands, goal_query: Query<Entity, Added<Goal>>) {
-    for entity in &goal_query {
-        commands.entity(entity).insert((
-            Collider::cuboid(8., 8.),
-            Sensor,
-            ActiveEvents::COLLISION_EVENTS,
-        ));
     }
 }
 
