@@ -19,4 +19,6 @@ pub struct GameAssets {
     pub levels: Handle<bevy_ecs_ldtk::LdtkAsset>,
     #[asset(path = "fonts/Kenney Pixel Square.ttf")]
     pub main_font: Handle<Font>,
+    #[asset(path = "px.png")]
+    pub pixel: Handle<Image>,
 }

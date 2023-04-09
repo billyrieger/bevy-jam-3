@@ -11,6 +11,7 @@ use bevy_ecs_ldtk::prelude::*;
 #[cfg(not(debug_assertions))]
 use bevy_embedded_assets::EmbeddedAssetPlugin;
 use bevy_tweening::*;
+use bevy_particle_systems::ParticleSystemPlugin;
 
 pub const WIDTH: i32 = 640;
 pub const HEIGHT: i32 = 480;
@@ -48,6 +49,7 @@ impl Plugin for GamePlugin {
             // third-party plugins
             .add_plugin(LdtkPlugin)
             .add_plugin(TweeningPlugin)
+            .add_plugin(ParticleSystemPlugin)
             // .add_plugin(bevy::diagnostic::FrameTimeDiagnosticsPlugin)
             // .add_plugin(bevy::diagnostic::LogDiagnosticsPlugin::default())
             // game stuff

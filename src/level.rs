@@ -7,6 +7,7 @@ use crate::{
 use bevy::{prelude::*, render::view::RenderLayers, utils::HashMap};
 use bevy_ecs_ldtk::prelude::*;
 use bevy_ecs_tilemap::prelude::*;
+use bevy_particle_systems::*;
 
 const LEVEL_SPAWN_DELAY_SEC: f32 = 1.;
 const ACTIVE_LEVEL_COLOR: Color = Color::rgb(1., 1., 1.);
@@ -27,6 +28,8 @@ impl Plugin for LevelPlugin {
             .add_systems(
                 (
                     load_level,
+                    add_particles_to_goals.run_if(resource_exists::<CurrentMetaLevel>()),
+                    move_particles_up,
                     reload_level.run_if(resource_exists::<CurrentMetaLevel>()),
                     setup_ldtk_levels_on_spawn.run_if(resource_exists::<CurrentMetaLevel>()),
                     darken_inactive_levels,
@@ -227,6 +230,9 @@ pub struct GoalBundle {
     tile_type: TileType,
 }
 
+#[derive(Component)]
+pub struct GoalParticles;
+
 #[derive(Component, Default)]
 pub struct Wall;
 
@@ -335,6 +341,47 @@ fn prepare_level_data(
     commands.insert_resource(all_levels);
 }
 
+fn add_particles_to_goals(
+    current_level: Res<CurrentMetaLevel>,
+    mut commands: Commands,
+    game_assets: Res<GameAssets>,
+    goals: Query<(&GridCoords, &Parent), Added<Goal>>,
+) {
+    for (&goal_coords, parent) in &goals {
+        commands.entity(parent.get()).with_children(|parent| {
+            parent.spawn(GoalParticles).insert(ParticleSystemBundle {
+                particle_system: ParticleSystem {
+                    max_particles: 500,
+                    texture: ParticleTexture::Sprite(game_assets.pixel.clone()),
+                    initial_speed: JitteredValue::jittered(500.0, -300.0..300.0),
+                    velocity_modifiers: vec![VelocityModifier::Drag(0.05.into())],
+                    lifetime: JitteredValue::jittered(0.5, -0.25..0.25),
+                    color: ColorOverTime::Gradient(Curve::new(vec![
+                        CurvePoint::new(Color::rgb(0., 1., 0.), 0.0),
+                        CurvePoint::new(Color::rgba(0., 1., 0., 0.), 1.0),
+                    ])),
+                    spawn_rate_per_second: ValueOverTime::Constant(0.),
+                    despawn_particles_with_system: true,
+                    space: ParticleSpace::World,
+                    looping: false,
+                    system_duration_seconds: 2.,
+                    max_distance: Some(500.),
+                    scale: 2.0.into(),
+                    bursts: vec![ParticleBurst::new(0.0, 1000)],
+                    ..ParticleSystem::default()
+                },
+                transform: Transform::from_translation(
+                    current_level
+                        .0
+                        .grid_coords_to_translation(goal_coords)
+                        .extend(0.),
+                ),
+                ..ParticleSystemBundle::default()
+            });
+        });
+    }
+}
+
 fn load_level(
     mut commands: Commands,
     all_levels: Res<AllMetaLevels>,
@@ -430,6 +477,7 @@ fn check_all_goal_tiles(
     current_level: Res<CurrentMetaLevel>,
     level_spawn_countdown: Option<Res<LevelSpawnCountdown>>,
     goal_query: Query<&Goal>,
+    goal_particles: Query<Entity, With<GoalParticles>>,
 ) {
     // only continue if we're not already waiting to load a new level
     if level_spawn_countdown.is_some() {
@@ -441,6 +489,9 @@ fn check_all_goal_tiles(
             timer: Timer::from_seconds(LEVEL_SPAWN_DELAY_SEC, TimerMode::Once),
             level_num: current_level.0.level_num + 1,
         });
+        for goal_particles in &goal_particles {
+            commands.entity(goal_particles).insert(Playing);
+        }
     }
 }
 
@@ -488,5 +539,11 @@ fn darken_inactive_levels(
                 sprite.color = color;
             }
         }
+    }
+}
+
+fn move_particles_up(mut particles: Query<&mut Transform, With<Particle>>) {
+    for mut transform in &mut particles {
+        transform.translation.z = 20.;
     }
 }
