@@ -88,11 +88,11 @@ impl MetaLevel {
     }
 
     pub fn unpadded_item_width_px(&self) -> i32 {
-        (self.level_grid_width - 2) * crate::GRID_SIZE
+        (self.level_grid_width - 1) * crate::GRID_SIZE
     }
 
     pub fn unpadded_item_height_px(&self) -> i32 {
-        (self.level_grid_height - 2) * crate::GRID_SIZE
+        (self.level_grid_height - 1) * crate::GRID_SIZE
     }
 
     pub fn get_center_translation_for_texture(&self, meta_coords: MetaGridCoords) -> Vec2 {
