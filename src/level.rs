@@ -1,8 +1,8 @@
 use crate::{
     boundary::BoundaryPlugin,
     loading::GameAssets,
-    player::{Player, PrimaryPlayer},
-    GameState, STARTING_LEVEL,
+    player::{IsMoving, Player, PrimaryPlayer},
+    GameState, GRID_SIZE, STARTING_LEVEL,
 };
 use bevy::{prelude::*, render::view::RenderLayers, utils::HashMap};
 use bevy_ecs_ldtk::prelude::*;
@@ -36,7 +36,10 @@ impl Plugin for LevelPlugin {
             .add_systems(
                 (
                     update_goal_tile_status,
-                    check_all_goal_tiles.run_if(any_with_component::<Goal>()),
+                    check_all_goal_tiles.run_if(
+                        any_with_component::<Goal>()
+                            .and_then(not(any_with_component::<IsMoving>())),
+                    ),
                     level_countdown_timer.run_if(resource_exists::<LevelSpawnCountdown>()),
                 )
                     .in_set(OnUpdate(GameState::InGame)),
@@ -137,16 +140,16 @@ impl MetaLevel {
     }
 
     pub fn grid_coords_to_translation(&self, grid_coords: GridCoords) -> Vec3 {
-        let x = (grid_coords.x as f32 - 0.5 * (self.level_grid_width as f32 - 1.))
-            * crate::GRID_SIZE as f32;
-        let y = (grid_coords.y as f32 - 0.5 * (self.level_grid_height as f32 - 1.))
-            * self.level_height_px() as f32;
+        let x =
+            (grid_coords.x as f32 - 0.5 * (self.level_grid_width as f32 - 1.)) * GRID_SIZE as f32;
+        let y =
+            (grid_coords.y as f32 - 0.5 * (self.level_grid_height as f32 - 1.)) * GRID_SIZE as f32;
         let center_offset = Vec3::new(
             self.level_width_px() as f32,
             self.level_height_px() as f32,
             0.,
         ) / 2.;
-        Vec3::new(x, y, 0.) - center_offset
+        Vec3::new(x, y, 0.) + center_offset
     }
 }
 
