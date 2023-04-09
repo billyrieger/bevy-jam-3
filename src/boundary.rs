@@ -1,5 +1,5 @@
 use crate::{
-    level::{ActiveLevel, LevelPosition},
+    level::{CurrentMetaLevel, LevelPosition},
     player::PrimaryPlayer,
     util::grid_coords_to_tile_pos,
     GameState,
@@ -12,17 +12,19 @@ pub struct BoundaryPlugin;
 
 impl Plugin for BoundaryPlugin {
     fn build(&self, app: &mut App) {
-        app.add_system(add_components_to_arrow_tiles.in_set(OnUpdate(GameState::InGame)))
-            .add_systems(
-                (
-                    clear_boundary_arrows,
-                    update_boundary_arrows_pointing_from
-                        .run_if(any_with_component::<PrimaryPlayer>()),
-                    update_boundary_arrows_pointing_to
-                        .run_if(any_with_component::<PrimaryPlayer>()),
-                )
-                    .in_set(OnUpdate(GameState::InGame)),
-            );
+        app.add_system(
+            add_components_to_arrow_tiles
+                .run_if(resource_exists::<CurrentMetaLevel>())
+                .in_set(OnUpdate(GameState::InGame)),
+        )
+        .add_systems(
+            (
+                clear_boundary_arrows,
+                update_boundary_arrows_pointing_from.run_if(any_with_component::<PrimaryPlayer>()),
+                update_boundary_arrows_pointing_to.run_if(any_with_component::<PrimaryPlayer>()),
+            )
+                .in_set(OnUpdate(GameState::InGame)),
+        );
     }
 }
 
@@ -56,25 +58,25 @@ struct BoundaryArrow {
 
 fn add_components_to_arrow_tiles(
     mut commands: Commands,
-    active_level: Res<ActiveLevel>,
+    current_level: Res<CurrentMetaLevel>,
     layers: Query<(&LayerMetadata, &TileStorage), Added<TileStorage>>,
 ) {
     // arrows are along the edges of the level but NOT at the corners, so skip the first and last indices.
     // "normally" the range would be 0..width. instead we do 1..(width - 1).
-    let top_edge = (1..(active_level.item_grid_width - 1))
-        .map(|x| GridCoords::new(x, active_level.item_grid_height - 1))
+    let top_edge = (1..(current_level.0.level_grid_width - 1))
+        .map(|x| GridCoords::new(x, current_level.0.level_grid_height - 1))
         .map(|coords| grid_coords_to_tile_pos(coords).unwrap())
         .map(|tile_pos| (tile_pos, BoundaryEdge::Top));
-    let bottom_edge = (1..(active_level.item_grid_width - 1))
+    let bottom_edge = (1..(current_level.0.level_grid_width - 1))
         .map(|x| GridCoords::new(x, 0))
         .map(|coords| grid_coords_to_tile_pos(coords).unwrap())
         .map(|tile_pos| (tile_pos, BoundaryEdge::Bottom));
-    let left_edge = (1..(active_level.item_grid_height - 1))
+    let left_edge = (1..(current_level.0.level_grid_height - 1))
         .map(|y| GridCoords::new(0, y))
         .map(|coords| grid_coords_to_tile_pos(coords).unwrap())
         .map(|tile_pos| (tile_pos, BoundaryEdge::Left));
-    let right_edge = (1..(active_level.item_grid_height - 1))
-        .map(|y| GridCoords::new(active_level.item_grid_width - 1, y))
+    let right_edge = (1..(current_level.0.level_grid_height - 1))
+        .map(|y| GridCoords::new(current_level.0.level_grid_width - 1, y))
         .map(|coords| grid_coords_to_tile_pos(coords).unwrap())
         .map(|tile_pos| (tile_pos, BoundaryEdge::Right));
     let edges = top_edge
@@ -116,7 +118,7 @@ fn clear_boundary_arrows(
 }
 
 fn update_boundary_arrows_pointing_from(
-    active_level: Res<ActiveLevel>,
+    current_level: Res<CurrentMetaLevel>,
     levels: Query<(&Children, &LevelPosition)>,
     layers: Query<(&LayerMetadata, &TileStorage)>,
     primary_players: Query<Entity, With<PrimaryPlayer>>,
@@ -150,32 +152,36 @@ fn update_boundary_arrows_pointing_from(
 
     // top edge
     if primary_level_pos.0.row > 0 {
-        active_level
-            .boundary_coords(BoundaryEdge::Top)
+        current_level
+            .0
+            .top_boundary_coords()
             .for_each(&mut set_arrow_visible);
     }
     // bottom edge
-    if primary_level_pos.0.row < active_level.grid_height - 1 {
-        active_level
-            .boundary_coords(BoundaryEdge::Bottom)
+    if primary_level_pos.0.row < current_level.0.meta_grid_height - 1 {
+        current_level
+            .0
+            .bottom_boundary_coords()
             .for_each(&mut set_arrow_visible);
     }
     // left edge
     if primary_level_pos.0.col > 0 {
-        active_level
-            .boundary_coords(BoundaryEdge::Left)
+        current_level
+            .0
+            .left_boundary_coords()
             .for_each(&mut set_arrow_visible);
     }
     // right edge
-    if primary_level_pos.0.col < active_level.grid_width - 1 {
-        active_level
-            .boundary_coords(BoundaryEdge::Right)
+    if primary_level_pos.0.col < current_level.0.meta_grid_width - 1 {
+        current_level
+            .0
+            .right_boundary_coords()
             .for_each(&mut set_arrow_visible);
     }
 }
 
 fn update_boundary_arrows_pointing_to(
-    active_level: Res<ActiveLevel>,
+    current_level: Res<CurrentMetaLevel>,
     levels: Query<(&Children, &LevelPosition)>,
     layers: Query<(&LayerMetadata, &TileStorage)>,
     primary_players: Query<Entity, With<PrimaryPlayer>>,
@@ -213,32 +219,36 @@ fn update_boundary_arrows_pointing_to(
         if level_pos.0.row == primary_level_pos.0.row + 1
             && level_pos.0.col == primary_level_pos.0.col
         {
-            (1..(active_level.item_grid_width - 1))
-                .map(|x| GridCoords::new(x, active_level.item_grid_height - 1))
+            current_level
+                .0
+                .top_boundary_coords()
                 .for_each(&mut set_arrow_visible);
         }
         // level is above primary level, so set the bottom edge visible
         if level_pos.0.row == primary_level_pos.0.row - 1
             && level_pos.0.col == primary_level_pos.0.col
         {
-            (1..(active_level.item_grid_width - 1))
-                .map(|x| GridCoords::new(x, 0))
+            current_level
+                .0
+                .bottom_boundary_coords()
                 .for_each(&mut set_arrow_visible);
         }
         // level is to the right of primary level, so set the left edge visible
         if level_pos.0.row == primary_level_pos.0.row
             && level_pos.0.col == primary_level_pos.0.col + 1
         {
-            (1..(active_level.item_grid_height - 1))
-                .map(|y| GridCoords::new(0, y))
+            current_level
+                .0
+                .left_boundary_coords()
                 .for_each(&mut set_arrow_visible);
         }
         // level is to the left of primary level, so set the right edge visible
         if level_pos.0.row == primary_level_pos.0.row
             && level_pos.0.col == primary_level_pos.0.col - 1
         {
-            (1..(active_level.item_grid_height - 1))
-                .map(|y| GridCoords::new(active_level.item_grid_width - 1, y))
+            current_level
+                .0
+                .right_boundary_coords()
                 .for_each(&mut set_arrow_visible);
         }
     }

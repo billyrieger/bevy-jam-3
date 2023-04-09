@@ -1,7 +1,7 @@
 use std::collections::VecDeque;
 
 use crate::{
-    level::{IsActive, LevelPosition, LevelSpawnCountdown, MetaGridPos, TileType},
+    level::{IsActive, LevelPosition, LevelSpawnCountdown, MetaGridCoords, TileType},
     util::grid_coords_to_tile_pos,
     GameState,
 };
@@ -93,7 +93,7 @@ pub struct MovePlayerEvent {
 }
 
 pub struct MoveNeighboringPlayersEvent {
-    pub grid_coords: MetaGridPos,
+    pub grid_coords: MetaGridCoords,
     pub direction: Direction,
 }
 

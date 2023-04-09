@@ -11,7 +11,7 @@ use bevy::{
 };
 
 use crate::{
-    level::{ActiveLevel, LevelPosition, MetaGridPos},
+    level::{CurrentMetaLevel, LevelPosition, MetaGridCoords},
     GameState, MainCamera, DRAG_RENDER_LAYER, MAIN_RENDER_LAYER,
 };
 
@@ -26,12 +26,13 @@ impl Plugin for DragPlugin {
             .add_systems(
                 (
                     swap_levels,
-                    spawn_drag_areas.run_if(resource_changed::<ActiveLevel>()),
                     update_cursor_icon,
-                    begin_drag.run_if(not(resource_exists::<Dragging>())),
                     drag_icon,
+                    spawn_drag_areas.run_if(resource_exists_and_changed::<CurrentMetaLevel>()),
+                    begin_drag.run_if(not(resource_exists::<Dragging>())),
                     end_drag.run_if(resource_exists::<Dragging>()),
                 )
+                    .distributive_run_if(resource_exists::<CurrentMetaLevel>())
                     .in_set(OnUpdate(GameState::InGame)),
             );
     }
@@ -43,7 +44,7 @@ impl Plugin for DragPlugin {
 
 #[derive(Resource)]
 struct Dragging {
-    from_pos: MetaGridPos,
+    from_pos: MetaGridCoords,
 }
 
 // ================
@@ -51,8 +52,8 @@ struct Dragging {
 // ================
 
 struct SwapLevelsEvent {
-    from_pos: MetaGridPos,
-    to_pos: MetaGridPos,
+    from_pos: MetaGridCoords,
+    to_pos: MetaGridCoords,
 }
 
 // ====================
@@ -75,14 +76,14 @@ struct Container;
 struct DragArea;
 
 #[derive(Component)]
-struct DragAreaPosition(MetaGridPos);
+struct DragAreaPosition(MetaGridCoords);
 
 // =================
 // ==== SYSTEMS ====
 // =================
 
 fn swap_levels(
-    active_level: Res<ActiveLevel>,
+    current_level: Res<CurrentMetaLevel>,
     mut swap_events: EventReader<SwapLevelsEvent>,
     mut ldtk_levels: Query<(&mut LevelPosition, &mut Transform)>,
 ) {
@@ -90,10 +91,10 @@ fn swap_levels(
         for (mut level_pos, mut transform) in &mut ldtk_levels {
             if level_pos.0 == event.from_pos {
                 *level_pos = LevelPosition(event.to_pos);
-                transform.translation = active_level.get_translation(event.to_pos).extend(0.);
+                transform.translation = current_level.0.get_translation(event.to_pos).extend(0.);
             } else if level_pos.0 == event.to_pos {
                 *level_pos = LevelPosition(event.from_pos);
-                transform.translation = active_level.get_translation(event.from_pos).extend(0.);
+                transform.translation = current_level.0.get_translation(event.from_pos).extend(0.);
             }
         }
     }
@@ -162,7 +163,7 @@ fn spawn_ui_root(mut commands: Commands) {
 
 fn spawn_drag_areas(
     mut commands: Commands,
-    active_level: Res<ActiveLevel>,
+    current_level: Res<CurrentMetaLevel>,
     ui_root_query: Query<Entity, With<UiRoot>>,
 ) {
     let ui_root = ui_root_query.single();
@@ -175,8 +176,8 @@ fn spawn_drag_areas(
         .insert(NodeBundle {
             style: Style {
                 size: Size::new(
-                    Val::Px(active_level.total_width_px() as f32),
-                    Val::Px(active_level.total_height_px() as f32),
+                    Val::Px(current_level.0.total_width_px() as f32),
+                    Val::Px(current_level.0.total_height_px() as f32),
                 ),
                 ..default()
             },
@@ -185,21 +186,21 @@ fn spawn_drag_areas(
         .id();
     commands.entity(ui_root).add_child(container);
 
-    for col in 0..active_level.grid_width {
-        for row in 0..active_level.grid_height {
+    for col in 0..current_level.0.meta_grid_width {
+        for row in 0..current_level.0.meta_grid_height {
             let drag_area = commands
-                .spawn((DragArea, DragAreaPosition(MetaGridPos::new(row, col))))
+                .spawn((DragArea, DragAreaPosition(MetaGridCoords::new(row, col))))
                 .insert(NodeBundle {
                     style: Style {
                         size: Size::new(
-                            Val::Px(active_level.unpadded_item_width_px() as f32),
-                            Val::Px(active_level.unpadded_item_height_px() as f32),
+                            Val::Px(current_level.0.unpadded_item_width_px() as f32),
+                            Val::Px(current_level.0.unpadded_item_height_px() as f32),
                         ),
                         margin: UiRect::all(Val::Px(crate::GRID_SIZE as f32)),
                         position_type: PositionType::Absolute,
                         position: UiRect {
-                            top: Val::Px((row * active_level.item_height_px) as f32),
-                            left: Val::Px((col * active_level.item_width_px) as f32),
+                            top: Val::Px((row * current_level.0.level_height_px()) as f32),
+                            left: Val::Px((col * current_level.0.level_width_px()) as f32),
                             ..default()
                         },
                         ..default()
@@ -233,7 +234,7 @@ fn update_cursor_icon(
 
 fn begin_drag(
     mut commands: Commands,
-    active_level: Res<ActiveLevel>,
+    current_level: Res<CurrentMetaLevel>,
     input: Res<Input<MouseButton>>,
     drag_areas: Query<(&RelativeCursorPosition, &DragAreaPosition)>,
     mut drag_sprite: Query<&mut Sprite, With<DragSprite>>,
@@ -246,10 +247,12 @@ fn begin_drag(
                 });
                 let mut sprite = drag_sprite.single_mut();
                 let foo = Some(Rect::from_center_size(
-                    active_level.get_center_translation_for_texture(drag_area_pos.0),
+                    current_level
+                        .0
+                        .get_center_translation_for_texture(drag_area_pos.0),
                     Vec2::new(
-                        active_level.unpadded_item_width_px() as f32,
-                        active_level.unpadded_item_height_px() as f32,
+                        current_level.0.unpadded_item_width_px() as f32,
+                        current_level.0.unpadded_item_height_px() as f32,
                     ),
                 ));
                 sprite.rect = foo;
