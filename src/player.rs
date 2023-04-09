@@ -1,7 +1,9 @@
 use std::collections::VecDeque;
 
 use crate::{
-    level::{IsActive, LevelPosition, LevelSpawnCountdown, MetaGridCoords, TileType},
+    level::{
+        CurrentMetaLevel, IsActive, LevelPosition, LevelSpawnCountdown, MetaGridCoords, TileType,
+    },
     util::grid_coords_to_tile_pos,
     GameState,
 };
@@ -18,22 +20,24 @@ impl Plugin for PlayerPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugin(InputManagerPlugin::<PlayerAction>::default())
             .register_ldtk_entity::<PlayerBundle>("Player")
-            .add_event::<MovePlayerEvent>()
-            .add_event::<MoveNeighboringPlayersEvent>()
+            .add_event::<TryMovePlayerEvent>()
+            .add_event::<TryMoveNeighboringPlayersEvent>()
             .add_systems(
                 (add_components_to_primary_player, unlock_player_movement)
                     .in_set(OnUpdate(GameState::InGame)),
             )
             .add_systems(
                 (
-                    send_player_move_event_on_input.run_if(
+                    send_try_move_event_on_input.run_if(
                         any_with_component::<PrimaryPlayer>()
                             .and_then(not(resource_exists::<LevelSpawnCountdown>())),
                     ),
-                    move_player,
-                    move_neighboring_players,
+                    try_move_player,
+                    try_move_neighboring_players,
+                    process_queued_movement,
                 )
                     .chain()
+                    .distributive_run_if(resource_exists::<CurrentMetaLevel>())
                     .in_set(OnUpdate(GameState::InGame)),
             );
     }
@@ -76,23 +80,28 @@ impl Direction {
     }
 }
 
+struct QueuedMovement {
+    direction: Direction,
+    delay: Timer,
+}
+
 // ===================
 // ==== RESOURCES ====
 // ===================
 
 #[derive(Resource, Default)]
-struct QueuedMovement(VecDeque<Direction>);
+struct QueuedInput(VecDeque<Direction>);
 
 // ================
 // ==== EVENTS ====
 // ================
 
-pub struct MovePlayerEvent {
+pub struct TryMovePlayerEvent {
     pub player: Entity,
     pub direction: Direction,
 }
 
-pub struct MoveNeighboringPlayersEvent {
+pub struct TryMoveNeighboringPlayersEvent {
     pub grid_coords: MetaGridCoords,
     pub direction: Direction,
 }
@@ -113,6 +122,9 @@ pub struct IsMoving {
     to: GridCoords,
 }
 
+#[derive(Component, Default)]
+pub struct QueuedMovements(VecDeque<QueuedMovement>);
+
 #[derive(Bundle, LdtkEntity)]
 pub struct PlayerBundle {
     player: Player,
@@ -126,6 +138,8 @@ pub struct PlayerBundle {
     physics: (RigidBody, Collider, ActiveEvents),
     #[from_entity_instance]
     entity_instance: EntityInstance,
+    #[bundle]
+    queued_movements: QueuedMovements,
 }
 
 fn player_physics_bundle(_: &EntityInstance) -> (RigidBody, Collider, ActiveEvents) {
@@ -166,16 +180,16 @@ fn add_components_to_primary_player(
     }
 }
 
-fn send_player_move_event_on_input(
-    mut queued_movement: Local<QueuedMovement>,
+fn send_try_move_event_on_input(
+    mut queued_input: Local<QueuedInput>,
     primary_players: Query<
         (Entity, &ActionState<PlayerAction>, Option<&IsMoving>),
         With<PrimaryPlayer>,
     >,
-    mut event_writer: EventWriter<MovePlayerEvent>,
+    mut event_writer: EventWriter<TryMovePlayerEvent>,
 ) {
     let (entity, action_state, maybe_is_moving) = primary_players.single();
-    let direction = queued_movement.0.pop_front().or_else(|| {
+    let direction = queued_input.0.pop_front().or_else(|| {
         if action_state.just_pressed(PlayerAction::MoveUp) {
             Some(Direction::Up)
         } else if action_state.just_pressed(PlayerAction::MoveDown) {
@@ -190,9 +204,9 @@ fn send_player_move_event_on_input(
     });
     if let Some(direction) = direction {
         if maybe_is_moving.is_some() {
-            queued_movement.0.push_back(direction);
+            queued_input.0.push_back(direction);
         } else {
-            event_writer.send(MovePlayerEvent {
+            event_writer.send(TryMovePlayerEvent {
                 direction,
                 player: entity,
             });
@@ -226,10 +240,26 @@ fn unlock_player_movement(
     }
 }
 
-fn move_player(
+fn process_queued_movement(
     mut commands: Commands,
-    mut move_player_events: EventReader<MovePlayerEvent>,
-    mut move_neighboring_players_events: EventWriter<MoveNeighboringPlayersEvent>,
+    time: Res<Time>,
+    current_level: Res<CurrentMetaLevel>,
+    mut queued_movements: Query<&mut QueuedMovements>,
+) {
+    for mut queued_movements in &mut queued_movements {
+        if let Some(mut movement) = queued_movements.0.pop_front() {
+            if movement.delay.tick(time.delta()).just_finished() {
+            } else {
+                queued_movements.0.push_front(movement);
+            }
+        }
+    }
+}
+
+fn try_move_player(
+    mut commands: Commands,
+    mut move_player_events: EventReader<TryMovePlayerEvent>,
+    mut move_neighboring_players_events: EventWriter<TryMoveNeighboringPlayersEvent>,
     mut player_query: Query<
         (Entity, &mut GridCoords, &mut Transform, &Parent),
         With<PrimaryPlayer>,
@@ -258,7 +288,7 @@ fn move_player(
             &event.direction,
         );
         if movement.is_some() {
-            move_neighboring_players_events.send(MoveNeighboringPlayersEvent {
+            move_neighboring_players_events.send(TryMoveNeighboringPlayersEvent {
                 grid_coords: level_pos.0,
                 direction: event.direction,
             })
@@ -266,9 +296,9 @@ fn move_player(
     }
 }
 
-fn move_neighboring_players(
+fn try_move_neighboring_players(
     mut commands: Commands,
-    mut move_neighboring_player_events: EventReader<MoveNeighboringPlayersEvent>,
+    mut move_neighboring_player_events: EventReader<TryMoveNeighboringPlayersEvent>,
     mut player_query: Query<(Entity, &mut GridCoords, &mut Transform), With<Player>>,
     mut levels: Query<(&Children, &LevelPosition, &mut IsActive), With<Handle<LdtkLevel>>>,
     layers: Query<(&LayerMetadata, &TileStorage)>,

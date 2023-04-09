@@ -76,7 +76,7 @@ impl MetaLevel {
     }
 
     pub fn level_height_px(&self) -> i32 {
-        self.level_grid_width * crate::GRID_SIZE
+        self.level_grid_height * crate::GRID_SIZE
     }
 
     pub fn total_width_px(&self) -> i32 {
@@ -97,7 +97,7 @@ impl MetaLevel {
 
     pub fn get_center_translation_for_texture(&self, meta_coords: MetaGridCoords) -> Vec2 {
         let col_offset = (meta_coords.col as f32 - 0.5 * (self.meta_grid_width as f32 - 1.))
-            * self.level_height_px() as f32;
+            * self.level_width_px() as f32;
         let row_offset = (meta_coords.row as f32 - 0.5 * (self.meta_grid_height as f32 - 1.))
             * self.level_height_px() as f32;
         Vec2::new(crate::WIDTH as f32, crate::HEIGHT as f32) / 2.
@@ -106,12 +106,10 @@ impl MetaLevel {
 
     pub fn get_translation(&self, grid_pos: MetaGridCoords) -> Vec2 {
         let col_offset = (grid_pos.col as f32 - 0.5 * (self.meta_grid_width as f32 - 1.))
-            * self.level_grid_width as f32
-            * crate::GRID_SIZE as f32;
+            * self.level_width_px() as f32;
         // row offset is flipped
         let row_offset = -(grid_pos.row as f32 - 0.5 * (self.meta_grid_height as f32 - 1.))
-            * self.level_grid_height as f32
-            * crate::GRID_SIZE as f32;
+            * self.level_height_px() as f32;
         // levels are loaded with the bottom left corner at the world origin, so
         // we offset the level so that the center of the level aligns with the
         // world origin.
@@ -136,6 +134,19 @@ impl MetaLevel {
     pub fn right_boundary_coords(&self) -> impl Iterator<Item = GridCoords> + '_ {
         (1..(self.level_grid_height - 1))
             .map(move |y| GridCoords::new(self.level_grid_width - 1, y))
+    }
+
+    pub fn grid_coords_to_translation(&self, grid_coords: GridCoords) -> Vec3 {
+        let x = (grid_coords.x as f32 - 0.5 * (self.level_grid_width as f32 - 1.))
+            * crate::GRID_SIZE as f32;
+        let y = (grid_coords.y as f32 - 0.5 * (self.level_grid_height as f32 - 1.))
+            * self.level_height_px() as f32;
+        let center_offset = Vec3::new(
+            self.level_width_px() as f32,
+            self.level_height_px() as f32,
+            0.,
+        ) / 2.;
+        Vec3::new(x, y, 0.) - center_offset
     }
 }
 
