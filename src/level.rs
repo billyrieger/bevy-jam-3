@@ -351,7 +351,7 @@ fn add_particles_to_goals(
         commands.entity(parent.get()).with_children(|parent| {
             parent.spawn(GoalParticles).insert(ParticleSystemBundle {
                 particle_system: ParticleSystem {
-                    max_particles: 500,
+                    max_particles: 100,
                     texture: ParticleTexture::Sprite(game_assets.pixel.clone()),
                     initial_speed: JitteredValue::jittered(500.0, -300.0..300.0),
                     velocity_modifiers: vec![VelocityModifier::Drag(0.05.into())],
@@ -367,7 +367,7 @@ fn add_particles_to_goals(
                     system_duration_seconds: 2.,
                     max_distance: Some(500.),
                     scale: 2.0.into(),
-                    bursts: vec![ParticleBurst::new(0.0, 1000)],
+                    bursts: vec![ParticleBurst::new(0.0, 100)],
                     ..ParticleSystem::default()
                 },
                 transform: Transform::from_translation(
