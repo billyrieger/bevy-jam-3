@@ -2,7 +2,7 @@ use crate::{
     boundary::{BoundaryEdge, BoundaryPlugin},
     loading::GameAssets,
     player::{Player, PrimaryPlayer},
-    GameState,
+    GameState, STARTING_LEVEL,
 };
 use bevy::{prelude::*, render::view::RenderLayers, utils::HashMap};
 use bevy_ecs_ldtk::prelude::*;
@@ -11,7 +11,7 @@ use bevy_rapier2d::prelude::*;
 
 const LEVEL_SPAWN_DELAY_SEC: f32 = 0.5;
 const ACTIVE_LEVEL_COLOR: Color = Color::rgb(1., 1., 1.);
-const INACTIVE_LEVEL_COLOR: Color = Color::rgba(0.5, 0.5, 0.5, 0.5);
+const INACTIVE_LEVEL_COLOR: Color = Color::rgb(0.3, 0.3, 0.3);
 
 pub struct LevelPlugin;
 
@@ -162,7 +162,7 @@ impl MetaGridPos {
 pub struct LevelPosition(pub MetaGridPos);
 
 #[derive(Component)]
-pub struct IsActive(bool);
+pub struct IsActive(pub bool);
 
 #[derive(Component)]
 pub enum TileType {
@@ -256,7 +256,7 @@ fn setup(
             ..default()
         })
         .insert(RenderLayers::layer(1));
-    event_writer.send(LoadLevelEvent { level_num: 0 });
+    event_writer.send(LoadLevelEvent { level_num: STARTING_LEVEL });
 }
 
 fn load_level(

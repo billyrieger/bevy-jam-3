@@ -1,7 +1,7 @@
 use std::collections::VecDeque;
 
 use crate::{
-    level::{LevelPosition, LevelSpawnCountdown, MetaGridPos, TileType},
+    level::{IsActive, LevelPosition, LevelSpawnCountdown, MetaGridPos, TileType},
     util::grid_coords_to_tile_pos,
     GameState,
 };
@@ -45,6 +45,7 @@ enum PlayerAction {
     MoveDown,
     MoveLeft,
     MoveRight,
+    ResetLevel,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -157,6 +158,7 @@ fn add_components_to_primary_player(
                         (KeyCode::Right, PlayerAction::MoveRight),
                         (KeyCode::Up, PlayerAction::MoveUp),
                         (KeyCode::Down, PlayerAction::MoveDown),
+                        (KeyCode::R, PlayerAction::ResetLevel),
                     ]),
                     ..default()
                 });
@@ -200,12 +202,26 @@ fn send_player_move_event_on_input(
 
 fn unlock_player_movement(
     mut commands: Commands,
-    mut players: Query<(Entity, &mut GridCoords, &Animator<Transform>, &IsMoving)>,
+    mut players: Query<(
+        Entity,
+        &Parent,
+        &mut GridCoords,
+        &Animator<Transform>,
+        &IsMoving,
+        Option<&PrimaryPlayer>,
+    )>,
+    mut levels: Query<&mut IsActive>,
 ) {
-    for (entity, mut grid_coords, animator, movement) in &mut players {
+    for (entity, parent, mut grid_coords, animator, movement, maybe_primary) in &mut players {
         if animator.tweenable().progress() == 1. {
             *grid_coords = movement.to;
             commands.entity(entity).remove::<IsMoving>();
+            if maybe_primary.is_none() {
+                let mut is_active = levels
+                    .get_mut(parent.get())
+                    .expect("player parent is a level");
+                is_active.0 = false;
+            }
         }
     }
 }
@@ -226,26 +242,26 @@ fn move_player(
         let (entity, mut player_coords, mut player_transform, parent) =
             player_query.get_mut(event.player).unwrap();
         let (_, level_children, level_pos) = level_query.get(parent.get()).unwrap();
-        for (_, tile_storage) in level_children
+        let (_, tile_storage) = level_children
             .iter()
             .filter_map(|&child| layer_query.get(child).ok())
-            .filter(|(metadata, _)| metadata.identifier == "TileData")
-        {
-            let movement = player_movement_logic(
-                &mut commands,
-                &tile_storage,
-                &tile_query,
-                entity,
-                &mut player_transform.translation,
-                &mut player_coords,
-                &event.direction,
-            );
-            if movement.is_some() {
-                move_neighboring_players_events.send(MoveNeighboringPlayersEvent {
-                    grid_coords: level_pos.0,
-                    direction: event.direction,
-                })
-            }
+            .find(|(metadata, _)| metadata.identifier == "TileData")
+            .expect("TileData layer exists");
+
+        let movement = player_movement_logic(
+            &mut commands,
+            &tile_storage,
+            &tile_query,
+            entity,
+            &mut player_transform.translation,
+            &mut player_coords,
+            &event.direction,
+        );
+        if movement.is_some() {
+            move_neighboring_players_events.send(MoveNeighboringPlayersEvent {
+                grid_coords: level_pos.0,
+                direction: event.direction,
+            })
         }
     }
 }
@@ -254,38 +270,41 @@ fn move_neighboring_players(
     mut commands: Commands,
     mut move_neighboring_player_events: EventReader<MoveNeighboringPlayersEvent>,
     mut player_query: Query<(Entity, &mut GridCoords, &mut Transform), With<Player>>,
-    level_query: Query<(&Children, &LevelPosition), With<Handle<LdtkLevel>>>,
-    layer_query: Query<(&LayerMetadata, &TileStorage)>,
+    mut levels: Query<(&Children, &LevelPosition, &mut IsActive), With<Handle<LdtkLevel>>>,
+    layers: Query<(&LayerMetadata, &TileStorage)>,
     tile_query: Query<&TileType>,
 ) {
     for event in move_neighboring_player_events.iter() {
-        for (level_children, _) in level_query
-            .iter()
-            .filter(|(_, level_pos)| level_pos.0.is_neighbor(event.grid_coords))
+        for (level_children, _, mut level_is_active) in levels
+            .iter_mut()
+            .filter(|(_, level_pos, _)| level_pos.0.is_neighbor(event.grid_coords))
         {
-            for (_, tile_storage) in level_children
+            let (_, tile_storage) = level_children
                 .iter()
-                .filter_map(|&child| layer_query.get(child).ok())
-                .filter(|(metadata, _)| metadata.identifier == "TileData")
-            {
-                let player_children: Vec<Entity> = level_children
-                    .iter()
-                    .copied()
-                    .filter(|&child| player_query.contains(child))
-                    .collect();
-                for child in player_children {
-                    if let Ok((entity, mut player_coords, mut player_transform)) =
-                        player_query.get_mut(child)
-                    {
-                        let _did_move = player_movement_logic(
-                            &mut commands,
-                            &tile_storage,
-                            &tile_query,
-                            entity,
-                            &mut player_transform.translation,
-                            &mut player_coords,
-                            &event.direction,
-                        );
+                .filter_map(|&child| layers.get(child).ok())
+                .find(|(metadata, _)| metadata.identifier == "TileData")
+                .expect("TileData layer exists");
+
+            let player_children: Vec<Entity> = level_children
+                .iter()
+                .copied()
+                .filter(|&child| player_query.contains(child))
+                .collect();
+            for child in player_children {
+                if let Ok((entity, mut player_coords, mut player_transform)) =
+                    player_query.get_mut(child)
+                {
+                    let did_move = player_movement_logic(
+                        &mut commands,
+                        &tile_storage,
+                        &tile_query,
+                        entity,
+                        &mut player_transform.translation,
+                        &mut player_coords,
+                        &event.direction,
+                    );
+                    if did_move.is_some() {
+                        level_is_active.0 = true;
                     }
                 }
             }

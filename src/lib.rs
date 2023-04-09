@@ -20,6 +20,8 @@ pub const GRID_SIZE: i32 = 32;
 pub const MAIN_RENDER_LAYER: u8 = 0;
 pub const DRAG_RENDER_LAYER: u8 = 1;
 
+const STARTING_LEVEL: i32 = 4;
+
 #[derive(States, Clone, Default, Debug, PartialEq, Eq, Hash)]
 enum GameState {
     #[default]
@@ -43,6 +45,7 @@ impl Plugin for GamePlugin {
         #[cfg(not(debug_assertions))]
         let default_plugins = default_plugins.add_before::<AssetPlugin, _>(EmbeddedAssetPlugin);
         app.add_plugins(default_plugins)
+            .insert_resource(ClearColor(Color::BLACK))
             // third-party plugins
             .add_plugin(LdtkPlugin)
             .add_plugin(RapierPhysicsPlugin::<NoUserData>::default())
