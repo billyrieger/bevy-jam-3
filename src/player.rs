@@ -14,11 +14,15 @@ use bevy_rapier2d::prelude::*;
 use bevy_tweening::{lens::TransformPositionLens, *};
 use leafwing_input_manager::prelude::*;
 
+const MOVEMENT_TIME_SEC: f32 = 0.1;
+const NEIGHBOR_DELAY_SEC: f32 = 0.2;
+
 pub struct PlayerPlugin;
 
 impl Plugin for PlayerPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugin(InputManagerPlugin::<PlayerAction>::default())
+            .init_resource::<QueuedInput>()
             .register_ldtk_entity::<PlayerBundle>("Player")
             .add_event::<TryMovePlayerEvent>()
             .add_event::<TryMoveNeighboringPlayersEvent>()
@@ -82,7 +86,7 @@ impl Direction {
 
 struct QueuedMovement {
     direction: Direction,
-    delay: Duration,
+    delay: Timer,
 }
 
 // ===================
@@ -90,7 +94,7 @@ struct QueuedMovement {
 // ===================
 
 #[derive(Resource, Default)]
-struct QueuedInput(VecDeque<Direction>);
+pub struct QueuedInput(pub VecDeque<Direction>);
 
 // ================
 // ==== EVENTS ====
@@ -178,7 +182,7 @@ fn add_components_to_primary_player(
 }
 
 fn send_try_move_event_on_input(
-    mut queued_input: Local<QueuedInput>,
+    mut queued_input: ResMut<QueuedInput>,
     primary_players: Query<
         (Entity, &ActionState<PlayerAction>, Option<&IsMoving>),
         With<PrimaryPlayer>,
@@ -239,31 +243,31 @@ fn unlock_player_movement(
 
 fn process_queued_movement(
     mut commands: Commands,
-    mut entities: Query<(Entity, &Transform, &mut GridCoords, &mut QueuedMovements)>,
+    time: Res<Time>,
+    mut entities: Query<(Entity, &Transform, &mut QueuedMovements)>,
 ) {
-    for (entity, transform, mut grid_coords, mut queued_movements) in &mut entities {
-        if let Some(movement) = queued_movements.0.pop_front() {
-            *grid_coords += movement.direction.unit_grid_coords();
+    for (entity, transform, mut queued_movements) in &mut entities {
+        let mut to_remove = vec![];
+        for (i, movement) in queued_movements.0.iter_mut().enumerate() {
+            if !movement.delay.tick(time.delta()).just_finished() {
+                continue;
+            }
+            to_remove.push(i);
             let delta = movement.direction.unit_vec().extend(0.) * GRID_SIZE as f32;
             let tween = Tween::new(
                 EaseFunction::QuadraticInOut,
-                Duration::from_secs_f32(0.1),
+                Duration::from_secs_f32(MOVEMENT_TIME_SEC),
                 TransformPositionLens {
                     start: transform.translation,
                     end: transform.translation + delta,
                 },
             );
-            if movement.delay > Duration::ZERO {
-                commands.entity(entity).insert((
-                    Animator::new(Delay::new(movement.delay).then(tween)),
-                    IsMoving,
-                ));
-            } else {
-                commands.entity(entity).insert((
-                    Animator::new(tween),
-                    IsMoving,
-                ));
-            }
+            commands
+                .entity(entity)
+                .insert((IsMoving, Animator::new(tween)));
+        }
+        for i in to_remove.into_iter().rev() {
+            queued_movements.0.remove(i);
         }
     }
 }
@@ -271,14 +275,15 @@ fn process_queued_movement(
 fn try_move_player(
     mut move_player_events: EventReader<TryMovePlayerEvent>,
     mut move_neighboring_players_events: EventWriter<TryMoveNeighboringPlayersEvent>,
-    players: Query<(Entity, &GridCoords, &Parent), With<PrimaryPlayer>>,
+    players: Query<(Entity, &Parent), With<PrimaryPlayer>>,
     levels: Query<(Entity, &Children, &LevelPosition)>,
     layers: Query<(&LayerMetadata, &TileStorage)>,
     tiles: Query<&TileType>,
+    mut grid_coords: Query<&mut GridCoords>,
     mut queued_movements: Query<&mut QueuedMovements>,
 ) {
     for event in move_player_events.iter() {
-        let (player_entity, player_coords, parent) = players.get(event.player).unwrap();
+        let (player_entity, parent) = players.get(event.player).unwrap();
         let (_, level_children, level_pos) = levels.get(parent.get()).unwrap();
         let (_, tile_storage) = level_children
             .iter()
@@ -286,17 +291,24 @@ fn try_move_player(
             .find(|(metadata, _)| metadata.identifier == "TileData")
             .expect("TileData layer exists");
 
-        let did_move =
-            player_movement_logic(&tile_storage, &tiles, &player_coords, &event.direction);
-        if did_move.is_some() {
-            queued_movements
-                .get_mut(player_entity)
-                .expect("player entity can queue movements")
-                .0
-                .push_back(QueuedMovement {
-                    direction: event.direction,
-                    delay: Duration::from_secs_f32(0.),
-                });
+        let did_move = player_movement_logic(
+            &tile_storage,
+            &tiles,
+            player_entity,
+            &event.direction,
+            &mut grid_coords,
+        );
+        if let Some(move_results) = did_move {
+            for result in move_results {
+                queued_movements
+                    .get_mut(result.entity)
+                    .expect("entity can queue movements")
+                    .0
+                    .push_back(QueuedMovement {
+                        direction: result.direction,
+                        delay: Timer::from_seconds(0., TimerMode::Once),
+                    });
+            }
             move_neighboring_players_events.send(TryMoveNeighboringPlayersEvent {
                 grid_coords: level_pos.0,
                 direction: event.direction,
@@ -307,14 +319,15 @@ fn try_move_player(
 
 fn try_move_neighboring_players(
     mut move_neighboring_player_events: EventReader<TryMoveNeighboringPlayersEvent>,
-    mut player_query: Query<(Entity, &GridCoords), With<Player>>,
+    mut player_query: Query<Entity, With<Player>>,
     mut levels: Query<(&Children, &LevelPosition, &mut IsActive), With<Handle<LdtkLevel>>>,
     layers: Query<(&LayerMetadata, &TileStorage)>,
     tiles: Query<&TileType>,
+    mut grid_coords: Query<&mut GridCoords>,
     mut queued_movements: Query<&mut QueuedMovements>,
 ) {
     for event in move_neighboring_player_events.iter() {
-        for (level_children, _, mut level_is_active) in levels
+        for (level_children, _, mut _level_is_active) in levels
             .iter_mut()
             .filter(|(_, level_pos, _)| level_pos.0.is_neighbor(event.grid_coords))
         {
@@ -324,23 +337,26 @@ fn try_move_neighboring_players(
                 .find(|(metadata, _)| metadata.identifier == "TileData")
                 .expect("TileData layer exists");
             for &child in level_children.iter() {
-                if let Ok((player, player_coords)) = player_query.get_mut(child) {
+                if let Ok(player) = player_query.get_mut(child) {
                     let did_move = player_movement_logic(
                         &tile_storage,
                         &tiles,
-                        &player_coords,
+                        player,
                         &event.direction,
+                        &mut grid_coords,
                     );
-                    if did_move.is_some() {
-                        queued_movements
-                            .get_mut(player)
-                            .expect("player entity can queue movements")
-                            .0
-                            .push_back(QueuedMovement {
-                                direction: event.direction,
-                                delay: Duration::from_secs_f32(0.1),
-                            });
-                        level_is_active.0 = true;
+                    if let Some(move_results) = did_move {
+                        for result in move_results {
+                            queued_movements
+                                .get_mut(result.entity)
+                                .expect("entity can queue movements")
+                                .0
+                                .push_back(QueuedMovement {
+                                    direction: result.direction,
+                                    delay: Timer::from_seconds(NEIGHBOR_DELAY_SEC, TimerMode::Once),
+                                });
+                            // level_is_active.0 = true;
+                        }
                     }
                 }
             }
@@ -348,13 +364,22 @@ fn try_move_neighboring_players(
     }
 }
 
+struct MoveResult {
+    entity: Entity,
+    direction: Direction,
+}
+
 fn player_movement_logic(
     tile_storage: &TileStorage,
     tiles: &Query<&TileType>,
-    player_coords: &GridCoords,
+    player_entity: Entity,
     direction: &Direction,
-) -> Option<()> {
-    let new_coords = *player_coords + direction.unit_grid_coords();
+    grid_coords: &mut Query<&mut GridCoords>,
+) -> Option<Vec<MoveResult>> {
+    let old_coords = *grid_coords
+        .get(player_entity)
+        .expect("player has GridCoords");
+    let new_coords = old_coords + direction.unit_grid_coords();
     let new_tile_pos = grid_coords_to_tile_pos(new_coords)?;
     let tile_entity = tile_storage.checked_get(&new_tile_pos)?;
     let tile_type = tiles.get(tile_entity).expect("tile entity is a tile");
@@ -362,5 +387,9 @@ fn player_movement_logic(
         TileType::Wall | TileType::Boundary => return None,
         _ => {}
     }
-    Some(())
+    *grid_coords.get_mut(player_entity).unwrap() = new_coords;
+    Some(vec![MoveResult {
+        entity: player_entity,
+        direction: *direction,
+    }])
 }

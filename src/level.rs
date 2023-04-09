@@ -1,7 +1,7 @@
 use crate::{
     boundary::BoundaryPlugin,
     loading::GameAssets,
-    player::{IsMoving, Player, PrimaryPlayer},
+    player::{Player, PrimaryPlayer, QueuedInput},
     GameState, GRID_SIZE, STARTING_LEVEL,
 };
 use bevy::{prelude::*, render::view::RenderLayers, utils::HashMap};
@@ -9,9 +9,9 @@ use bevy_ecs_ldtk::prelude::*;
 use bevy_ecs_tilemap::prelude::*;
 use bevy_rapier2d::prelude::*;
 
-const LEVEL_SPAWN_DELAY_SEC: f32 = 0.5;
+const LEVEL_SPAWN_DELAY_SEC: f32 = 1.;
 const ACTIVE_LEVEL_COLOR: Color = Color::rgb(1., 1., 1.);
-const INACTIVE_LEVEL_COLOR: Color = Color::rgb(0.3, 0.3, 0.3);
+const INACTIVE_LEVEL_COLOR: Color = Color::rgb(0.5, 0.5, 0.5);
 
 pub struct LevelPlugin;
 
@@ -338,9 +338,11 @@ fn load_level(
     all_levels: Res<AllMetaLevels>,
     mut ldtk_world_query: Query<&mut LevelSet>,
     mut event_reader: EventReader<LoadLevelEvent>,
+    mut queued_input: ResMut<QueuedInput>,
 ) {
     if let Some(event) = event_reader.iter().next() {
         commands.remove_resource::<LevelSpawnCountdown>();
+        queued_input.0.clear();
 
         let mut level_set = ldtk_world_query.single_mut();
         let meta_level = all_levels
