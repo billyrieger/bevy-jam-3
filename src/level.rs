@@ -17,6 +17,7 @@ pub struct LevelPlugin;
 impl Plugin for LevelPlugin {
     fn build(&self, app: &mut App) {
         app.add_event::<LoadLevelEvent>()
+            .add_event::<ReloadLevelEvent>()
             .register_ldtk_int_cell::<FloorBundle>(1)
             .register_ldtk_int_cell::<GoalBundle>(2)
             .register_ldtk_int_cell::<WallBundle>(3)
@@ -26,6 +27,7 @@ impl Plugin for LevelPlugin {
             .add_systems(
                 (
                     load_level,
+                    reload_level.run_if(resource_exists::<CurrentMetaLevel>()),
                     setup_ldtk_levels_on_spawn.run_if(resource_exists::<CurrentMetaLevel>()),
                     darken_inactive_levels,
                 )
@@ -157,6 +159,16 @@ pub struct LevelSpawnCountdown {
     pub level_num: i32,
 }
 
+// ================
+// ==== EVENTS ====
+// ================
+
+pub struct LoadLevelEvent {
+    pub level_num: i32,
+}
+
+pub struct ReloadLevelEvent;
+
 // ====================
 // ==== COMPONENTS ====
 // ====================
@@ -233,14 +245,6 @@ pub struct BoundaryBundle {
     boundary: Boundary,
     #[from_int_grid_cell]
     tile_type: TileType,
-}
-
-// ================
-// ==== EVENTS ====
-// ================
-
-struct LoadLevelEvent {
-    level_num: i32,
 }
 
 // =================
@@ -350,6 +354,26 @@ fn load_level(
 
         level_set.iids = meta_level.initial_placement.values().cloned().collect();
         commands.insert_resource(CurrentMetaLevel(meta_level.clone()));
+    }
+    event_reader.clear();
+}
+
+fn reload_level(
+    mut commands: Commands,
+    current_level: Res<CurrentMetaLevel>,
+    mut ldtk_world_query: Query<&mut LevelSet>,
+    mut event_reader: EventReader<ReloadLevelEvent>,
+    mut load_events: EventWriter<LoadLevelEvent>,
+) {
+    if let Some(_) = event_reader.iter().next() {
+        let current_level_num = current_level.0.level_num;
+        commands.remove_resource::<LevelSpawnCountdown>();
+        let mut level_set = ldtk_world_query.single_mut();
+        level_set.iids.clear();
+        commands.remove_resource::<CurrentMetaLevel>();
+        load_events.send(LoadLevelEvent {
+            level_num: current_level_num,
+        });
     }
     event_reader.clear();
 }

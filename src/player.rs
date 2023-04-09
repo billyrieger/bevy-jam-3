@@ -2,7 +2,8 @@ use std::{collections::VecDeque, time::Duration};
 
 use crate::{
     level::{
-        CurrentMetaLevel, IsActive, LevelPosition, LevelSpawnCountdown, MetaGridCoords, TileType,
+        CurrentMetaLevel, IsActive, LevelPosition, LevelSpawnCountdown, MetaGridCoords,
+        ReloadLevelEvent, TileType,
     },
     util::grid_coords_to_tile_pos,
     GameState, GRID_SIZE,
@@ -26,7 +27,11 @@ impl Plugin for PlayerPlugin {
             .add_event::<TryMovePlayerEvent>()
             .add_event::<TryMoveNeighboringPlayersEvent>()
             .add_systems(
-                (add_components_to_primary_player, unlock_player_movement)
+                (
+                    reload_level_input,
+                    add_components_to_primary_player,
+                    unlock_player_movement,
+                )
                     .in_set(OnUpdate(GameState::InGame)),
             )
             .add_systems(
@@ -165,6 +170,17 @@ fn add_components_to_primary_player(
                     ]),
                     ..default()
                 });
+        }
+    }
+}
+
+fn reload_level_input(
+    mut reload_events: EventWriter<ReloadLevelEvent>,
+    primary_players: Query<&ActionState<PlayerAction>, With<PrimaryPlayer>>,
+) {
+    for action_state in &primary_players {
+        if action_state.just_pressed(PlayerAction::ResetLevel) {
+            reload_events.send(ReloadLevelEvent);
         }
     }
 }
