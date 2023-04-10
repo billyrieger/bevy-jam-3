@@ -12,7 +12,7 @@ permissions:
 env:
   # update with the name of the main binary and itch.io information
   binary: bevy-jam-3
-  itch_target: billygoatdev/bevy-jam-3
+  itch_target: billygoatdev/beside-yourself
 
 
 jobs:
