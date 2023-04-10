@@ -2,8 +2,8 @@ use std::{collections::VecDeque, time::Duration};
 
 use crate::{
     level::{
-        CurrentMetaLevel, Goal, IsActive, LevelPosition, LevelSpawnCountdown, MetaGridCoords,
-        ReloadLevelEvent, TileType,
+        CurrentMetaLevel, Goal, IsActive, Lava, LevelPosition, LevelRespawnCountdown,
+        LevelSpawnCountdown, MetaGridCoords, ReloadLevelEvent, TileType,
     },
     util::grid_coords_to_tile_pos,
     GameState, GRID_SIZE,
@@ -43,7 +43,8 @@ impl Plugin for PlayerPlugin {
                 (
                     send_try_move_event_on_input.run_if(
                         any_with_component::<PrimaryPlayer>()
-                            .and_then(not(resource_exists::<LevelSpawnCountdown>())),
+                            .and_then(not(resource_exists::<LevelSpawnCountdown>()))
+                            .and_then(not(resource_exists::<LevelRespawnCountdown>())),
                     ),
                     try_move_player,
                     try_move_neighboring_players,
@@ -284,9 +285,19 @@ fn process_queued_movement(
 fn player_face(
     mut players: Query<(&Parent, &mut TextureAtlasSprite, &GridCoords), With<Player>>,
     goals: Query<(&Parent, &Goal)>,
+    lavas: Query<(&Parent, &GridCoords), With<Lava>>,
     layers: Query<&Parent, With<LayerMetadata>>,
 ) {
     for (player_parent, mut player_sprite, player_coords) in &mut players {
+        if lavas.iter().any(|(lava_parent, lava_coords)| {
+            let layer_parent = layers
+                .get(lava_parent.get())
+                .expect("goal parent is a layer");
+            layer_parent.get() == player_parent.get() && player_coords == lava_coords
+        }) {
+            player_sprite.index = PLAYER_UNHAPPY_INDEX;
+            continue;
+        }
         let (_, goal) = goals
             .iter()
             .find(|(goal_parent, _)| {

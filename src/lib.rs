@@ -1,26 +1,26 @@
-pub mod ui;
+pub mod boundary;
 pub mod level;
 pub mod loading;
 pub mod menu;
 pub mod player;
+pub mod ui;
 pub mod util;
-pub mod boundary;
 
 use bevy::{prelude::*, render::view::RenderLayers};
 use bevy_ecs_ldtk::prelude::*;
 #[cfg(not(debug_assertions))]
 use bevy_embedded_assets::EmbeddedAssetPlugin;
-use bevy_tweening::*;
 use bevy_particle_systems::ParticleSystemPlugin;
+use bevy_tweening::*;
 
-pub const WIDTH: i32 = 640;
-pub const HEIGHT: i32 = 480;
+pub const WIDTH: i32 = 640 * 2;
+pub const HEIGHT: i32 = 480 * 2;
 pub const GRID_SIZE: i32 = 32;
 
 pub const MAIN_RENDER_LAYER: u8 = 0;
 pub const DRAG_RENDER_LAYER: u8 = 1;
 
-const STARTING_LEVEL: i32 = 0;
+const STARTING_LEVEL: i32 = 8;
 
 #[derive(States, Clone, Default, Debug, PartialEq, Eq, Hash)]
 enum GameState {

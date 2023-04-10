@@ -2,9 +2,10 @@ use crate::{
     boundary::BoundaryPlugin,
     loading::GameAssets,
     player::{Player, PrimaryPlayer, QueuedInput},
-    GameState, GRID_SIZE, STARTING_LEVEL, ui::DragAreaPosition,
+    ui::DragAreaPosition,
+    GameState, GRID_SIZE, STARTING_LEVEL,
 };
-use bevy::{prelude::*, render::view::RenderLayers, utils::HashMap};
+use bevy::{prelude::*, render::view::RenderLayers, ui::RelativeCursorPosition, utils::HashMap};
 use bevy_ecs_ldtk::prelude::*;
 use bevy_ecs_tilemap::prelude::*;
 use bevy_particle_systems::*;
@@ -23,6 +24,7 @@ impl Plugin for LevelPlugin {
             .register_ldtk_int_cell::<GoalBundle>(2)
             .register_ldtk_int_cell::<WallBundle>(3)
             .register_ldtk_int_cell::<BoundaryBundle>(4)
+            .register_ldtk_int_cell::<LavaBundle>(5)
             .add_plugin(BoundaryPlugin)
             .add_systems((setup, prepare_level_data).in_schedule(OnEnter(GameState::InGame)))
             .add_systems(
@@ -38,9 +40,12 @@ impl Plugin for LevelPlugin {
             )
             .add_systems(
                 (
+                    check_lava_tiles.run_if(not(resource_exists::<LevelRespawnCountdown>())),
                     update_goal_tile_status,
                     check_all_goal_tiles.run_if(any_with_component::<Goal>()),
-                    level_countdown_timer.run_if(resource_exists::<LevelSpawnCountdown>()),
+                    spawn_level_countdown_timer.run_if(resource_exists::<LevelSpawnCountdown>()),
+                    respawn_level_countdown_timer
+                        .run_if(resource_exists::<LevelRespawnCountdown>()),
                 )
                     .in_set(OnUpdate(GameState::InGame)),
             );
@@ -162,6 +167,11 @@ pub struct LevelSpawnCountdown {
     pub level_num: i32,
 }
 
+#[derive(Resource)]
+pub struct LevelRespawnCountdown {
+    pub timer: Timer,
+}
+
 // ================
 // ==== EVENTS ====
 // ================
@@ -188,6 +198,7 @@ pub enum TileType {
     Goal,
     Wall,
     Boundary,
+    Lava,
 }
 
 impl From<IntGridCell> for TileType {
@@ -197,6 +208,7 @@ impl From<IntGridCell> for TileType {
             2 => Self::Goal,
             3 => Self::Wall,
             4 => Self::Boundary,
+            5 => Self::Lava,
             _ => panic!("unknown tile type"),
         }
     }
@@ -249,6 +261,16 @@ pub struct Boundary;
 #[derive(Bundle, LdtkIntCell)]
 pub struct BoundaryBundle {
     pub boundary: Boundary,
+    #[from_int_grid_cell]
+    pub tile_type: TileType,
+}
+
+#[derive(Component, Default)]
+pub struct Lava;
+
+#[derive(Bundle, LdtkIntCell)]
+pub struct LavaBundle {
+    pub lava: Lava,
     #[from_int_grid_cell]
     pub tile_type: TileType,
 }
@@ -391,6 +413,7 @@ fn load_level(
 ) {
     if let Some(event) = event_reader.iter().next() {
         commands.remove_resource::<LevelSpawnCountdown>();
+        commands.remove_resource::<LevelRespawnCountdown>();
         queued_input.0.clear();
 
         let mut level_set = ldtk_world_query.single_mut();
@@ -415,6 +438,7 @@ fn reload_level(
     if let Some(_) = event_reader.iter().next() {
         let current_level_num = current_level.0.level_num;
         commands.remove_resource::<LevelSpawnCountdown>();
+        commands.remove_resource::<LevelRespawnCountdown>();
         let mut level_set = ldtk_world_query.single_mut();
         level_set.iids.clear();
         commands.remove_resource::<CurrentMetaLevel>();
@@ -453,6 +477,28 @@ fn setup_ldtk_levels_on_spawn(
             .insert(LevelPosition(grid_pos))
             .insert(IsActive(is_active));
         level_transform.translation = current_level.0.get_translation(grid_pos).extend(0.);
+    }
+}
+
+fn check_lava_tiles(
+    mut commands: Commands,
+    lavas: Query<(&Parent, &GridCoords), With<Lava>>,
+    players: Query<(&Parent, &GridCoords), With<Player>>,
+    layers: Query<&Parent, With<LayerMetadata>>,
+) {
+    for (lava_parent, lava_coords) in &lavas {
+        let layer_parent = layers
+            .get(lava_parent.get())
+            .expect("goal's parent is a layer");
+        let lava_level = layer_parent.get();
+        if players.iter().any(|(player_parent, player_coords)| {
+            player_parent.get() == lava_level && player_coords == lava_coords
+        }) {
+            println!("asd");
+            commands.insert_resource(LevelRespawnCountdown {
+                timer: Timer::from_seconds(LEVEL_SPAWN_DELAY_SEC, TimerMode::Once),
+            });
+        }
     }
 }
 
@@ -495,7 +541,7 @@ fn check_all_goal_tiles(
     }
 }
 
-fn level_countdown_timer(
+fn spawn_level_countdown_timer(
     time: Res<Time>,
     mut countdown: ResMut<LevelSpawnCountdown>,
     mut load_level_events: EventWriter<LoadLevelEvent>,
@@ -504,6 +550,16 @@ fn level_countdown_timer(
         load_level_events.send(LoadLevelEvent {
             level_num: countdown.level_num,
         })
+    }
+}
+
+fn respawn_level_countdown_timer(
+    time: Res<Time>,
+    mut countdown: ResMut<LevelRespawnCountdown>,
+    mut reload_level_events: EventWriter<ReloadLevelEvent>,
+) {
+    if countdown.timer.tick(time.delta()).just_finished() {
+        reload_level_events.send(ReloadLevelEvent);
     }
 }
 
@@ -543,7 +599,7 @@ fn darken_inactive_levels(
     }
 }
 
-fn move_particles_up(mut particles: Query<&mut Transform, With<Particle>>) {
+fn move_particles_up(mut particles: Query<&mut Transform, Added<Particle>>) {
     for mut transform in &mut particles {
         transform.translation.z = 20.;
     }
