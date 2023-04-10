@@ -13,8 +13,7 @@ use bevy::{
 use crate::{
     level::{CurrentMetaLevel, LevelPosition, MetaGridCoords, MoveCount},
     loading::GameAssets,
-    GameState, MainCamera, DRAG_RENDER_LAYER, GRID_SIZE, MAIN_RENDER_LAYER,
-    Z_OFFSET_UI,
+    GameState, MainCamera, DRAG_RENDER_LAYER, GRID_SIZE, MAIN_RENDER_LAYER, Z_OFFSET_UI,
 };
 
 pub struct UiPlugin;
@@ -30,6 +29,8 @@ impl Plugin for UiPlugin {
                     swap_levels,
                     update_cursor_icon,
                     drag_icon,
+                    highlight_drag_areas.run_if(resource_exists::<Dragging>()),
+                    unhighlight_drag_areas.run_if(not(resource_exists::<Dragging>())),
                     sync_move_count.run_if(resource_exists_and_changed::<MoveCount>()),
                     spawn_rest_of_ui.run_if(resource_exists_and_changed::<CurrentMetaLevel>()),
                     begin_drag.run_if(not(resource_exists::<Dragging>())),
@@ -385,5 +386,35 @@ fn end_drag(
             }
         }
         commands.remove_resource::<Dragging>();
+    }
+}
+
+fn unhighlight_drag_areas(
+    mut drag_areas: Query<(
+        &RelativeCursorPosition,
+        &DragAreaPosition,
+        &mut BackgroundColor,
+    )>,
+) {
+    for (_, _, mut bg_color) in &mut drag_areas {
+        *bg_color = Color::rgba(1., 1., 1., 0.).into();
+    }
+}
+
+
+fn highlight_drag_areas(
+    dragging: Res<Dragging>,
+    mut drag_areas: Query<(
+        &RelativeCursorPosition,
+        &DragAreaPosition,
+        &mut BackgroundColor,
+    )>,
+) {
+    for (rel_cursor_pos, drag_pos, mut bg_color) in &mut drag_areas {
+        if rel_cursor_pos.mouse_over() && drag_pos.0 != dragging.from_pos {
+            *bg_color = Color::rgba(0.1, 0.9, 0.1, 0.5).into();
+        } else {
+            *bg_color = Color::rgba(1., 1., 1., 0.).into();
+        }
     }
 }
