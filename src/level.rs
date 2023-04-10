@@ -2,7 +2,7 @@ use crate::{
     boundary::BoundaryPlugin,
     loading::GameAssets,
     player::{Player, PrimaryPlayer, QueuedInput},
-    GameState, GRID_SIZE, STARTING_LEVEL,
+    GameState, GRID_SIZE, STARTING_LEVEL, ui::DragAreaPosition,
 };
 use bevy::{prelude::*, render::view::RenderLayers, utils::HashMap};
 use bevy_ecs_ldtk::prelude::*;
@@ -205,7 +205,7 @@ impl From<IntGridCell> for TileType {
 #[derive(Bundle, LdtkIntCell)]
 struct GameTileBundle {
     #[from_int_grid_cell]
-    tile_type: TileType,
+    pub tile_type: TileType,
 }
 
 #[derive(Component, Default)]
@@ -213,21 +213,21 @@ pub struct Floor;
 
 #[derive(Bundle, LdtkIntCell)]
 pub struct FloorBundle {
-    floor: Floor,
+    pub floor: Floor,
     #[from_int_grid_cell]
-    tile_type: TileType,
+    pub tile_type: TileType,
 }
 
 #[derive(Component, Default)]
 pub struct Goal {
-    activated: bool,
+    pub activated: bool,
 }
 
 #[derive(Bundle, LdtkIntCell)]
 pub struct GoalBundle {
-    goal: Goal,
+    pub goal: Goal,
     #[from_int_grid_cell]
-    tile_type: TileType,
+    pub tile_type: TileType,
 }
 
 #[derive(Component)]
@@ -238,9 +238,9 @@ pub struct Wall;
 
 #[derive(Bundle, LdtkIntCell)]
 pub struct WallBundle {
-    wall: Wall,
+    pub wall: Wall,
     #[from_int_grid_cell]
-    tile_type: TileType,
+    pub tile_type: TileType,
 }
 
 #[derive(Component, Default)]
@@ -248,9 +248,9 @@ pub struct Boundary;
 
 #[derive(Bundle, LdtkIntCell)]
 pub struct BoundaryBundle {
-    boundary: Boundary,
+    pub boundary: Boundary,
     #[from_int_grid_cell]
-    tile_type: TileType,
+    pub tile_type: TileType,
 }
 
 // =================
@@ -509,6 +509,7 @@ fn level_countdown_timer(
 
 fn darken_inactive_levels(
     levels: Query<(&Children, &IsActive), Changed<IsActive>>,
+    mut drag_areas: Query<(&DragAreaPosition, &mut BackgroundColor)>,
     layers: Query<(&LayerMetadata, &TileStorage)>,
     primary_players: Query<&PrimaryPlayer>,
     mut tiles: Query<&mut TileColor>,

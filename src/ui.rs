@@ -12,12 +12,12 @@ use bevy::{
 
 use crate::{
     level::{CurrentMetaLevel, LevelPosition, MetaGridCoords},
-    GameState, MainCamera, DRAG_RENDER_LAYER, MAIN_RENDER_LAYER,
+    GameState, MainCamera, DRAG_RENDER_LAYER, GRID_SIZE, MAIN_RENDER_LAYER,
 };
 
-pub struct DragPlugin;
+pub struct UiPlugin;
 
-impl Plugin for DragPlugin {
+impl Plugin for UiPlugin {
     fn build(&self, app: &mut App) {
         app.add_event::<SwapLevelsEvent>()
             .add_systems(
@@ -61,22 +61,22 @@ struct SwapLevelsEvent {
 // ====================
 
 #[derive(Component)]
-struct UiRenderCamera;
+pub struct UiRenderCamera;
 
 #[derive(Component)]
-struct DragSprite;
+pub struct DragSprite;
 
 #[derive(Component)]
-struct UiRoot;
+pub struct UiRoot;
 
 #[derive(Component)]
-struct Container;
+pub struct Container;
 
 #[derive(Component)]
-struct DragArea;
+pub struct DragArea;
 
 #[derive(Component)]
-struct DragAreaPosition(MetaGridCoords);
+pub struct DragAreaPosition(MetaGridCoords);
 
 // =================
 // ==== SYSTEMS ====
@@ -199,8 +199,12 @@ fn spawn_drag_areas(
                         margin: UiRect::all(Val::Px(crate::GRID_SIZE as f32)),
                         position_type: PositionType::Absolute,
                         position: UiRect {
-                            top: Val::Px((row * current_level.0.level_height_px()) as f32),
-                            left: Val::Px((col * current_level.0.level_width_px()) as f32),
+                            top: Val::Px(
+                                (row * current_level.0.level_height_px() - GRID_SIZE / 2) as f32,
+                            ),
+                            left: Val::Px(
+                                (col * current_level.0.level_width_px() - GRID_SIZE / 2) as f32,
+                            ),
                             ..default()
                         },
                         ..default()

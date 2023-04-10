@@ -1,4 +1,4 @@
-pub mod drag;
+pub mod ui;
 pub mod level;
 pub mod loading;
 pub mod menu;
@@ -59,7 +59,7 @@ impl Plugin for GamePlugin {
             .add_plugin(menu::MenuPlugin)
             .add_plugin(level::LevelPlugin)
             .add_plugin(player::PlayerPlugin)
-            .add_plugin(drag::DragPlugin)
+            .add_plugin(ui::UiPlugin)
             .add_system(setup_camera.on_startup());
     }
 }

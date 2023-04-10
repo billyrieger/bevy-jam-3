@@ -2,7 +2,7 @@ use std::{collections::VecDeque, time::Duration};
 
 use crate::{
     level::{
-        CurrentMetaLevel, IsActive, LevelPosition, LevelSpawnCountdown, MetaGridCoords,
+        CurrentMetaLevel, Goal, IsActive, LevelPosition, LevelSpawnCountdown, MetaGridCoords,
         ReloadLevelEvent, TileType,
     },
     util::grid_coords_to_tile_pos,
@@ -16,6 +16,10 @@ use leafwing_input_manager::prelude::*;
 
 const MOVEMENT_TIME_SEC: f32 = 0.1;
 const NEIGHBOR_DELAY_SEC: f32 = 0.075;
+
+const PLAYER_HAPPY_INDEX: usize = 30;
+const PLAYER_NEUTRAL_INDEX: usize = 31;
+const PLAYER_UNHAPPY_INDEX: usize = 32;
 
 pub struct PlayerPlugin;
 
@@ -31,6 +35,7 @@ impl Plugin for PlayerPlugin {
                     reload_level_input,
                     add_components_to_primary_player,
                     unlock_player_movement,
+                    player_face,
                 )
                     .in_set(OnUpdate(GameState::InGame)),
             )
@@ -272,6 +277,29 @@ fn process_queued_movement(
         }
         for i in to_remove.into_iter().rev() {
             queued_movements.0.remove(i);
+        }
+    }
+}
+
+fn player_face(
+    mut players: Query<(&Parent, &mut TextureAtlasSprite, &GridCoords), With<Player>>,
+    goals: Query<(&Parent, &Goal)>,
+    layers: Query<&Parent, With<LayerMetadata>>,
+) {
+    for (player_parent, mut player_sprite, player_coords) in &mut players {
+        let (_, goal) = goals
+            .iter()
+            .find(|(goal_parent, _)| {
+                let layer_parent = layers
+                    .get(goal_parent.get())
+                    .expect("goal parent is a layer");
+                layer_parent.get() == player_parent.get()
+            })
+            .expect("every level with a player has a goal");
+        if goal.activated {
+            player_sprite.index = PLAYER_HAPPY_INDEX;
+        } else {
+            player_sprite.index = PLAYER_NEUTRAL_INDEX;
         }
     }
 }
