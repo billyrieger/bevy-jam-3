@@ -32,7 +32,7 @@ enum GameState {
     Loading,
     MainMenu,
     InGame,
-    
+    GameOver,
 }
 
 pub struct GamePlugin;

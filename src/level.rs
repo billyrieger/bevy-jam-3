@@ -2,7 +2,7 @@ use crate::{
     boundary::BoundaryPlugin,
     loading::GameAssets,
     player::{Player, PrimaryPlayer, QueuedInput},
-    ui::Dragging,
+    ui::{DragUiRoot, Dragging, DragSprite},
     GameState, GRID_SIZE, STARTING_LEVEL, Z_OFFSET_PARTICLE, Z_OFFSET_PLAYER,
 };
 use bevy::{prelude::*, render::view::RenderLayers, utils::HashMap};
@@ -25,6 +25,7 @@ impl Plugin for LevelPlugin {
             .register_ldtk_int_cell::<LavaBundle>(5)
             .add_plugin(BoundaryPlugin)
             .add_systems((setup, prepare_level_data).in_schedule(OnEnter(GameState::InGame)))
+            .add_system(cleanup.in_schedule(OnExit(GameState::InGame)))
             .add_systems(
                 (
                     load_level,
@@ -282,6 +283,26 @@ pub struct LavaBundle {
 // ==== SYSTEMS ====
 // =================
 
+fn cleanup(
+    mut commands: Commands,
+    ldtk_worlds: Query<Entity, With<Handle<LdtkAsset>>>,
+    ui_roots: Query<Entity, With<DragUiRoot>>,
+    drag_sprites: Query<Entity, With<DragSprite>>,
+) {
+    for entity in &ldtk_worlds {
+        commands.entity(entity).despawn_recursive();
+    }
+    for entity in &ui_roots {
+        commands.entity(entity).despawn_recursive();
+    }
+    for entity in &drag_sprites {
+        commands.entity(entity).despawn_recursive();
+    }
+    commands.remove_resource::<LevelSpawnCountdown>();
+    commands.remove_resource::<LevelRespawnCountdown>();
+    commands.remove_resource::<Dragging>();
+}
+
 fn setup(
     mut commands: Commands,
     game_assets: Res<GameAssets>,
@@ -409,6 +430,7 @@ fn add_particles_to_goals(
 
 fn load_level(
     mut commands: Commands,
+    mut state: ResMut<NextState<GameState>>,
     all_levels: Res<AllMetaLevels>,
     mut ldtk_world_query: Query<&mut LevelSet>,
     mut event_reader: EventReader<LoadLevelEvent>,
@@ -423,13 +445,12 @@ fn load_level(
         queued_input.0.clear();
 
         let mut level_set = ldtk_world_query.single_mut();
-        let meta_level = all_levels
-            .0
-            .get(event.level_num as usize)
-            .unwrap_or_else(|| all_levels.0.first().unwrap());
-
-        level_set.iids = meta_level.initial_placement.values().cloned().collect();
-        commands.insert_resource(CurrentMetaLevel(meta_level.clone()));
+        if let Some(meta_level) = all_levels.0.get(event.level_num as usize) {
+            level_set.iids = meta_level.initial_placement.values().cloned().collect();
+            commands.insert_resource(CurrentMetaLevel(meta_level.clone()));
+        } else {
+            state.set(GameState::GameOver);
+        }
     }
     event_reader.clear();
 }
