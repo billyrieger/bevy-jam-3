@@ -15,7 +15,7 @@ use bevy_tweening::{lens::TransformPositionLens, *};
 use leafwing_input_manager::prelude::*;
 
 const MOVEMENT_TIME_SEC: f32 = 0.1;
-const NEIGHBOR_DELAY_SEC: f32 = 0.075;
+const NEIGHBOR_DELAY_SEC: f32 = 0.;
 
 const PLAYER_HAPPY_INDEX: usize = 30;
 const PLAYER_NEUTRAL_INDEX: usize = 31;

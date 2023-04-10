@@ -13,7 +13,7 @@ use bevy::{
 use crate::{
     level::{CurrentMetaLevel, LevelPosition, MetaGridCoords, MoveCount},
     loading::GameAssets,
-    GameState, MainCamera, DRAG_RENDER_LAYER, GRID_SIZE, MAIN_RENDER_LAYER, STARTING_LEVEL,
+    GameState, MainCamera, DRAG_RENDER_LAYER, GRID_SIZE, MAIN_RENDER_LAYER,
     Z_OFFSET_UI,
 };
 
