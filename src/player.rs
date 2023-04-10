@@ -3,7 +3,7 @@ use std::{collections::VecDeque, time::Duration};
 use crate::{
     level::{
         CurrentMetaLevel, Goal, IsActive, Lava, LevelPosition, LevelRespawnCountdown,
-        LevelSpawnCountdown, MetaGridCoords, ReloadLevelEvent, TileType, MoveCount,
+        LevelSpawnCountdown, MetaGridCoords, MoveCount, ReloadLevelEvent, TileType,
     },
     util::grid_coords_to_tile_pos,
     GameState, GRID_SIZE,
@@ -172,6 +172,10 @@ fn add_components_to_primary_player(
                         (KeyCode::Right, PlayerAction::MoveRight),
                         (KeyCode::Up, PlayerAction::MoveUp),
                         (KeyCode::Down, PlayerAction::MoveDown),
+                        (KeyCode::A, PlayerAction::MoveLeft),
+                        (KeyCode::D, PlayerAction::MoveRight),
+                        (KeyCode::W, PlayerAction::MoveUp),
+                        (KeyCode::S, PlayerAction::MoveDown),
                         (KeyCode::R, PlayerAction::ResetLevel),
                     ]),
                     ..default()
