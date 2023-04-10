@@ -13,8 +13,8 @@ use bevy_embedded_assets::EmbeddedAssetPlugin;
 use bevy_particle_systems::ParticleSystemPlugin;
 use bevy_tweening::*;
 
-pub const WIDTH: i32 = 640 * 2;
-pub const HEIGHT: i32 = 480 * 2;
+pub const WIDTH: i32 = 960;
+pub const HEIGHT: i32 = 720;
 pub const GRID_SIZE: i32 = 32;
 
 pub const MAIN_RENDER_LAYER: u8 = 0;
@@ -25,8 +25,6 @@ const STARTING_LEVEL: i32 = 0;
 const Z_OFFSET_PLAYER: f32 = 10.;
 const Z_OFFSET_PARTICLE: f32 = 15.;
 const Z_OFFSET_UI: f32 = 25.;
-
-const CLEAR_COLOR: Color = Color::rgb(0.9, 0.9, 0.9);
 
 #[derive(States, Clone, Default, Debug, PartialEq, Eq, Hash)]
 enum GameState {
@@ -51,7 +49,7 @@ impl Plugin for GamePlugin {
         #[cfg(not(debug_assertions))]
         let default_plugins = default_plugins.add_before::<AssetPlugin, _>(EmbeddedAssetPlugin);
         app.add_plugins(default_plugins)
-            .insert_resource(ClearColor(CLEAR_COLOR))
+            .insert_resource(ClearColor(Color::WHITE))
             // third-party plugins
             .add_plugin(LdtkPlugin)
             .add_plugin(TweeningPlugin)

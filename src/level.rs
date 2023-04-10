@@ -2,17 +2,14 @@ use crate::{
     boundary::BoundaryPlugin,
     loading::GameAssets,
     player::{Player, PrimaryPlayer, QueuedInput},
-    ui::{DragAreaPosition, Dragging},
-    GameState, GRID_SIZE, STARTING_LEVEL, Z_OFFSET_PLAYER, Z_OFFSET_PARTICLE,
+    ui::Dragging,
+    GameState, GRID_SIZE, STARTING_LEVEL, Z_OFFSET_PARTICLE, Z_OFFSET_PLAYER,
 };
-use bevy::{prelude::*, render::view::RenderLayers, ui::RelativeCursorPosition, utils::HashMap};
+use bevy::{prelude::*, render::view::RenderLayers, utils::HashMap};
 use bevy_ecs_ldtk::prelude::*;
-use bevy_ecs_tilemap::prelude::*;
 use bevy_particle_systems::*;
 
 const LEVEL_SPAWN_DELAY_SEC: f32 = 1.;
-const ACTIVE_LEVEL_COLOR: Color = Color::rgb(1., 1., 1.);
-const INACTIVE_LEVEL_COLOR: Color = Color::rgb(0.5, 0.5, 0.5);
 
 pub struct LevelPlugin;
 
@@ -35,7 +32,8 @@ impl Plugin for LevelPlugin {
                     move_players_up,
                     reload_level.run_if(resource_exists::<CurrentMetaLevel>()),
                     setup_ldtk_levels_on_spawn.run_if(resource_exists::<CurrentMetaLevel>()),
-                    darken_inactive_levels,
+                    // darken_inactive_levels,
+                    show_active_boundary_tiles,
                 )
                     .in_set(OnUpdate(GameState::InGame)),
             )
@@ -565,42 +563,6 @@ fn respawn_level_countdown_timer(
     }
 }
 
-fn darken_inactive_levels(
-    levels: Query<(&Children, &IsActive), Changed<IsActive>>,
-    mut drag_areas: Query<(&DragAreaPosition, &mut BackgroundColor)>,
-    layers: Query<(&LayerMetadata, &TileStorage)>,
-    primary_players: Query<&PrimaryPlayer>,
-    mut tiles: Query<&mut TileColor>,
-    mut sprites: Query<&mut TextureAtlasSprite>,
-) {
-    for (level_children, level_is_active) in levels.iter().filter(|(children, _)| {
-        children
-            .iter()
-            .all(|child| !primary_players.contains(*child))
-    }) {
-        let color = if level_is_active.0 {
-            ACTIVE_LEVEL_COLOR
-        } else {
-            INACTIVE_LEVEL_COLOR
-        };
-        let (_, tile_storage) = level_children
-            .iter()
-            .filter_map(|child| layers.get(*child).ok())
-            .find(|(metadata, _)| metadata.identifier == "Tiles")
-            .expect("Tiles layer exists");
-        for tile in tile_storage.iter().filter_map(|x| *x) {
-            let mut tile_color = tiles.get_mut(tile).expect("tile is in tile query");
-            tile_color.0 = color;
-        }
-
-        for &child in level_children {
-            if let Ok(mut sprite) = sprites.get_mut(child) {
-                sprite.color = color;
-            }
-        }
-    }
-}
-
 fn move_players_up(mut particles: Query<&mut Transform, Added<Player>>) {
     for mut transform in &mut particles {
         transform.translation.z = Z_OFFSET_PLAYER;
@@ -610,5 +572,67 @@ fn move_players_up(mut particles: Query<&mut Transform, Added<Player>>) {
 fn move_particles_up(mut particles: Query<&mut Transform, Added<Particle>>) {
     for mut transform in &mut particles {
         transform.translation.z = Z_OFFSET_PARTICLE;
+    }
+}
+
+// fn darken_inactive_levels(
+//     levels: Query<(&Children, &IsActive), Changed<IsActive>>,
+//     mut drag_areas: Query<(&DragAreaPosition, &mut BackgroundColor)>,
+//     layers: Query<(&LayerMetadata, &TileStorage)>,
+//     primary_players: Query<&PrimaryPlayer>,
+//     mut tiles: Query<&mut TileColor>,
+//     mut sprites: Query<&mut TextureAtlasSprite>,
+// ) {
+//     for (level_children, level_is_active) in levels.iter().filter(|(children, _)| {
+//         children
+//             .iter()
+//             .all(|child| !primary_players.contains(*child))
+//     }) {
+//         let color = if level_is_active.0 {
+//             ACTIVE_LEVEL_COLOR
+//         } else {
+//             INACTIVE_LEVEL_COLOR
+//         };
+//         let (_, tile_storage) = level_children
+//             .iter()
+//             .filter_map(|child| layers.get(*child).ok())
+//             .find(|(metadata, _)| metadata.identifier == "Tiles")
+//             .expect("Tiles layer exists");
+//         for tile in tile_storage.iter().filter_map(|x| *x) {
+//             let mut tile_color = tiles.get_mut(tile).expect("tile is in tile query");
+//             tile_color.0 = color;
+//         }
+
+//         for &child in level_children {
+//             if let Ok(mut sprite) = sprites.get_mut(child) {
+//                 sprite.color = color;
+//             }
+//         }
+//     }
+// }
+
+fn show_active_boundary_tiles(
+    levels: Query<&Children, With<Handle<LdtkLevel>>>,
+    layers: Query<(&LayerMetadata, Entity)>,
+    primary_players: Query<&PrimaryPlayer>,
+    mut visibilities: Query<&mut Visibility>,
+) {
+    for level_children in &levels {
+        let (_, layer) = level_children
+            .iter()
+            .filter_map(|child| layers.get(*child).ok())
+            .find(|(metadata, _)| metadata.identifier == "ActiveBoundary")
+            .expect("ActiveBoundary layer exists");
+        let is_primary = level_children
+            .iter()
+            .any(|&child| primary_players.contains(child));
+        let mut visibility = visibilities
+            .get_mut(layer)
+            .expect("layer's visibility can be set");
+        *visibility = if is_primary {
+            Visibility::Visible
+        } else {
+            Visibility::Hidden
+        };
     }
 }

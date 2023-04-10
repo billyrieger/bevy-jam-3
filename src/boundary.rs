@@ -48,8 +48,8 @@ pub enum ArrowDirection {
 
 #[derive(Component)]
 struct BoundaryArrow {
-    edge: BoundaryEdge,
-    direction: ArrowDirection,
+    _edge: BoundaryEdge,
+    _direction: ArrowDirection,
 }
 
 // =================
@@ -96,8 +96,8 @@ fn add_components_to_arrow_tiles(
         for (tile_pos, boundary_edge) in edges.clone() {
             let entity = tile_storage.get(&tile_pos).unwrap();
             commands.entity(entity).insert(BoundaryArrow {
-                edge: boundary_edge,
-                direction: arrow_direction,
+                _edge: boundary_edge,
+                _direction: arrow_direction,
             });
         }
     }
