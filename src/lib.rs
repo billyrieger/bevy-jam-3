@@ -22,6 +22,10 @@ pub const DRAG_RENDER_LAYER: u8 = 1;
 
 const STARTING_LEVEL: i32 = 0;
 
+const Z_OFFSET_PLAYER: f32 = 10.;
+const Z_OFFSET_PARTICLE: f32 = 15.;
+const Z_OFFSET_UI: f32 = 25.;
+
 #[derive(States, Clone, Default, Debug, PartialEq, Eq, Hash)]
 enum GameState {
     #[default]

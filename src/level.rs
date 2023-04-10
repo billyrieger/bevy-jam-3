@@ -2,8 +2,8 @@ use crate::{
     boundary::BoundaryPlugin,
     loading::GameAssets,
     player::{Player, PrimaryPlayer, QueuedInput},
-    ui::DragAreaPosition,
-    GameState, GRID_SIZE, STARTING_LEVEL,
+    ui::{DragAreaPosition, Dragging},
+    GameState, GRID_SIZE, STARTING_LEVEL, Z_OFFSET_PLAYER, Z_OFFSET_PARTICLE,
 };
 use bevy::{prelude::*, render::view::RenderLayers, ui::RelativeCursorPosition, utils::HashMap};
 use bevy_ecs_ldtk::prelude::*;
@@ -415,6 +415,7 @@ fn load_level(
     if let Some(event) = event_reader.iter().next() {
         commands.remove_resource::<LevelSpawnCountdown>();
         commands.remove_resource::<LevelRespawnCountdown>();
+        commands.remove_resource::<Dragging>();
         queued_input.0.clear();
 
         let mut level_set = ldtk_world_query.single_mut();
@@ -602,12 +603,12 @@ fn darken_inactive_levels(
 
 fn move_players_up(mut particles: Query<&mut Transform, Added<Player>>) {
     for mut transform in &mut particles {
-        transform.translation.z = 10.;
+        transform.translation.z = Z_OFFSET_PLAYER;
     }
 }
 
 fn move_particles_up(mut particles: Query<&mut Transform, Added<Particle>>) {
     for mut transform in &mut particles {
-        transform.translation.z = 20.;
+        transform.translation.z = Z_OFFSET_PARTICLE;
     }
 }

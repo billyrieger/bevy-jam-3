@@ -12,7 +12,7 @@ use bevy::{
 
 use crate::{
     level::{CurrentMetaLevel, LevelPosition, MetaGridCoords},
-    GameState, MainCamera, DRAG_RENDER_LAYER, GRID_SIZE, MAIN_RENDER_LAYER,
+    GameState, MainCamera, DRAG_RENDER_LAYER, GRID_SIZE, MAIN_RENDER_LAYER, Z_OFFSET_UI,
 };
 
 pub struct UiPlugin;
@@ -43,8 +43,8 @@ impl Plugin for UiPlugin {
 // ===================
 
 #[derive(Resource)]
-struct Dragging {
-    from_pos: MetaGridCoords,
+pub struct Dragging {
+    pub from_pos: MetaGridCoords,
 }
 
 // ================
@@ -139,14 +139,17 @@ fn setup_image_render_target(mut commands: Commands, mut images: ResMut<Assets<I
         .spawn((DragSprite, RenderLayers::layer(DRAG_RENDER_LAYER)))
         .insert(SpriteBundle {
             sprite: Sprite {
-                color: Color::rgba(1., 1., 1., 0.5),
+                color: Color::rgba(0.5, 0.5, 0.5, 0.5),
                 ..default()
             },
             texture: image_handle.clone(),
             visibility: Visibility::Hidden,
             ..default()
         })
-        .insert(Transform::from_translation(Vec3::new(0., 0., 10.)));
+        .insert(
+            Transform::from_translation(Vec3::new(0., 0., Z_OFFSET_UI))
+                .with_scale(Vec3::splat(0.5)),
+        );
 }
 
 fn spawn_ui_root(mut commands: Commands) {
@@ -282,8 +285,11 @@ fn drag_icon(
             .map(|ray| ray.origin.truncate())
         {
             // round the mouse coords to the nearest pixel to ensure pixel art is crisp
-            sprite_transform.translation =
-                Vec3::new(mouse_world_pos.x.round(), mouse_world_pos.y.round(), 10.);
+            sprite_transform.translation = Vec3::new(
+                mouse_world_pos.x.round(),
+                mouse_world_pos.y.round(),
+                Z_OFFSET_UI,
+            );
         }
         *sprite_visibility = Visibility::Visible;
     } else {
