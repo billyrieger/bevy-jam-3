@@ -32,6 +32,7 @@ impl Plugin for LevelPlugin {
                     load_level,
                     add_particles_to_goals.run_if(resource_exists::<CurrentMetaLevel>()),
                     move_particles_up,
+                    move_players_up,
                     reload_level.run_if(resource_exists::<CurrentMetaLevel>()),
                     setup_ldtk_levels_on_spawn.run_if(resource_exists::<CurrentMetaLevel>()),
                     darken_inactive_levels,
@@ -596,6 +597,12 @@ fn darken_inactive_levels(
                 sprite.color = color;
             }
         }
+    }
+}
+
+fn move_players_up(mut particles: Query<&mut Transform, Added<Player>>) {
+    for mut transform in &mut particles {
+        transform.translation.z = 10.;
     }
 }
 

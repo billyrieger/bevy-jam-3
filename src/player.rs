@@ -398,7 +398,6 @@ fn try_move_neighboring_players(
                                     direction: result.direction,
                                     delay: Timer::from_seconds(NEIGHBOR_DELAY_SEC, TimerMode::Once),
                                 });
-                            // level_is_active.0 = true;
                         }
                     }
                 }

@@ -20,7 +20,7 @@ pub const GRID_SIZE: i32 = 32;
 pub const MAIN_RENDER_LAYER: u8 = 0;
 pub const DRAG_RENDER_LAYER: u8 = 1;
 
-const STARTING_LEVEL: i32 = 8;
+const STARTING_LEVEL: i32 = 0;
 
 #[derive(States, Clone, Default, Debug, PartialEq, Eq, Hash)]
 enum GameState {
