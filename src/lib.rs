@@ -26,6 +26,8 @@ const Z_OFFSET_PLAYER: f32 = 10.;
 const Z_OFFSET_PARTICLE: f32 = 15.;
 const Z_OFFSET_UI: f32 = 25.;
 
+const CLEAR_COLOR: Color = Color::rgb(0.9, 0.9, 0.9);
+
 #[derive(States, Clone, Default, Debug, PartialEq, Eq, Hash)]
 enum GameState {
     #[default]
@@ -49,7 +51,7 @@ impl Plugin for GamePlugin {
         #[cfg(not(debug_assertions))]
         let default_plugins = default_plugins.add_before::<AssetPlugin, _>(EmbeddedAssetPlugin);
         app.add_plugins(default_plugins)
-            .insert_resource(ClearColor(Color::BLACK))
+            .insert_resource(ClearColor(CLEAR_COLOR))
             // third-party plugins
             .add_plugin(LdtkPlugin)
             .add_plugin(TweeningPlugin)
