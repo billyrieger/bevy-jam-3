@@ -30,7 +30,6 @@ impl Plugin for UiPlugin {
                     swap_levels,
                     update_cursor_icon,
                     drag_icon,
-                    sync_level_num.run_if(resource_exists_and_changed::<CurrentMetaLevel>()),
                     sync_move_count.run_if(resource_exists_and_changed::<MoveCount>()),
                     spawn_rest_of_ui.run_if(resource_exists_and_changed::<CurrentMetaLevel>()),
                     begin_drag.run_if(not(resource_exists::<Dragging>())),
@@ -196,7 +195,7 @@ fn spawn_rest_of_ui(
     commands.entity(ui_root).with_children(|parent| {
         parent.spawn(LevelTitle).insert(TextBundle {
             text: Text::from_section(
-                format!("Level {}", STARTING_LEVEL),
+                format!("Level {}", current_level.0.level_num + 1),
                 TextStyle {
                     font: game_assets.main_font.clone(),
                     font_size: 72.,
@@ -287,15 +286,6 @@ fn sync_move_count(
 ) {
     for mut text in &mut move_count_texts {
         text.sections[0].value = format!("Moves: {}", move_count.0);
-    }
-}
-
-fn sync_level_num(
-    current_level: Res<CurrentMetaLevel>,
-    mut level_title_texts: Query<&mut Text, With<LevelTitle>>,
-) {
-    for mut text in &mut level_title_texts {
-        text.sections[0].value = format!("Level {}", current_level.0.level_num);
     }
 }
 
