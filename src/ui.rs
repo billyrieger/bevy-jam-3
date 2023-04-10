@@ -11,8 +11,10 @@ use bevy::{
 };
 
 use crate::{
-    level::{CurrentMetaLevel, LevelPosition, MetaGridCoords},
-    GameState, MainCamera, DRAG_RENDER_LAYER, GRID_SIZE, MAIN_RENDER_LAYER, Z_OFFSET_UI,
+    level::{CurrentMetaLevel, LevelPosition, MetaGridCoords, MoveCount},
+    loading::GameAssets,
+    GameState, MainCamera, DRAG_RENDER_LAYER, GRID_SIZE, MAIN_RENDER_LAYER, STARTING_LEVEL,
+    Z_OFFSET_UI,
 };
 
 pub struct UiPlugin;
@@ -28,7 +30,9 @@ impl Plugin for UiPlugin {
                     swap_levels,
                     update_cursor_icon,
                     drag_icon,
-                    spawn_drag_areas.run_if(resource_exists_and_changed::<CurrentMetaLevel>()),
+                    sync_level_num.run_if(resource_exists_and_changed::<CurrentMetaLevel>()),
+                    sync_move_count.run_if(resource_exists_and_changed::<MoveCount>()),
+                    spawn_rest_of_ui.run_if(resource_exists_and_changed::<CurrentMetaLevel>()),
                     begin_drag.run_if(not(resource_exists::<Dragging>())),
                     end_drag.run_if(resource_exists::<Dragging>()),
                 )
@@ -67,16 +71,25 @@ pub struct UiRenderCamera;
 pub struct DragSprite;
 
 #[derive(Component)]
-pub struct UiRoot;
+pub struct DragUiRoot;
 
 #[derive(Component)]
-pub struct Container;
+pub struct DragContainer;
 
 #[derive(Component)]
 pub struct DragArea;
 
 #[derive(Component)]
 pub struct DragAreaPosition(MetaGridCoords);
+
+#[derive(Component)]
+pub struct LevelUiRoot;
+
+#[derive(Component)]
+pub struct LevelTitle;
+
+#[derive(Component)]
+pub struct MoveCountText;
 
 // =================
 // ==== SYSTEMS ====
@@ -86,8 +99,13 @@ fn swap_levels(
     current_level: Res<CurrentMetaLevel>,
     mut swap_events: EventReader<SwapLevelsEvent>,
     mut ldtk_levels: Query<(&mut LevelPosition, &mut Transform)>,
+    mut move_count: ResMut<MoveCount>,
 ) {
     for event in swap_events.iter() {
+        if event.to_pos == event.from_pos {
+            continue;
+        }
+        move_count.0 += 1;
         for (mut level_pos, mut transform) in &mut ldtk_levels {
             if level_pos.0 == event.from_pos {
                 *level_pos = LevelPosition(event.to_pos);
@@ -139,7 +157,7 @@ fn setup_image_render_target(mut commands: Commands, mut images: ResMut<Assets<I
         .spawn((DragSprite, RenderLayers::layer(DRAG_RENDER_LAYER)))
         .insert(SpriteBundle {
             sprite: Sprite {
-                color: Color::rgba(0.5, 0.5, 0.5, 0.5),
+                color: Color::rgba(1., 1., 1., 0.5),
                 ..default()
             },
             texture: image_handle.clone(),
@@ -153,7 +171,7 @@ fn setup_image_render_target(mut commands: Commands, mut images: ResMut<Assets<I
 }
 
 fn spawn_ui_root(mut commands: Commands) {
-    commands.spawn(UiRoot).insert(NodeBundle {
+    commands.spawn(DragUiRoot).insert(NodeBundle {
         style: Style {
             size: Size::all(Val::Percent(100.)),
             align_items: AlignItems::Center,
@@ -164,18 +182,60 @@ fn spawn_ui_root(mut commands: Commands) {
     });
 }
 
-fn spawn_drag_areas(
+fn spawn_rest_of_ui(
     mut commands: Commands,
+    game_assets: Res<GameAssets>,
     current_level: Res<CurrentMetaLevel>,
-    ui_root_query: Query<Entity, With<UiRoot>>,
+    ui_root_query: Query<Entity, With<DragUiRoot>>,
 ) {
     let ui_root = ui_root_query.single();
 
     // remove any UI elements from the previous level
     commands.entity(ui_root).despawn_descendants();
 
+    commands.entity(ui_root).with_children(|parent| {
+        parent.spawn(LevelTitle).insert(TextBundle {
+            text: Text::from_section(
+                format!("Level {}", STARTING_LEVEL),
+                TextStyle {
+                    font: game_assets.main_font.clone(),
+                    font_size: 72.,
+                    color: Color::rgb(0.1, 0.1, 0.1),
+                },
+            ),
+            style: Style {
+                position_type: PositionType::Absolute,
+                position: UiRect {
+                    top: Val::Px(0.),
+                    ..default()
+                },
+                ..default()
+            },
+            ..default()
+        });
+        parent.spawn(MoveCountText).insert(TextBundle {
+            text: Text::from_section(
+                "Moves: 0",
+                TextStyle {
+                    font: game_assets.main_font.clone(),
+                    font_size: 48.,
+                    color: Color::rgb(0.1, 0.1, 0.1),
+                },
+            ),
+            style: Style {
+                position_type: PositionType::Absolute,
+                position: UiRect {
+                    bottom: Val::Px(16.),
+                    ..default()
+                },
+                ..default()
+            },
+            ..default()
+        });
+    });
+
     let container = commands
-        .spawn(Container)
+        .spawn(DragContainer)
         .insert(NodeBundle {
             style: Style {
                 size: Size::new(
@@ -218,6 +278,24 @@ fn spawn_drag_areas(
                 .id();
             commands.entity(container).add_child(drag_area);
         }
+    }
+}
+
+fn sync_move_count(
+    move_count: Res<MoveCount>,
+    mut move_count_texts: Query<&mut Text, With<MoveCountText>>,
+) {
+    for mut text in &mut move_count_texts {
+        text.sections[0].value = format!("Moves: {}", move_count.0);
+    }
+}
+
+fn sync_level_num(
+    current_level: Res<CurrentMetaLevel>,
+    mut level_title_texts: Query<&mut Text, With<LevelTitle>>,
+) {
+    for mut text in &mut level_title_texts {
+        text.sections[0].value = format!("Level {}", current_level.0.level_num);
     }
 }
 

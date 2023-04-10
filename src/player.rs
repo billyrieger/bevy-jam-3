@@ -3,7 +3,7 @@ use std::{collections::VecDeque, time::Duration};
 use crate::{
     level::{
         CurrentMetaLevel, Goal, IsActive, Lava, LevelPosition, LevelRespawnCountdown,
-        LevelSpawnCountdown, MetaGridCoords, ReloadLevelEvent, TileType,
+        LevelSpawnCountdown, MetaGridCoords, ReloadLevelEvent, TileType, MoveCount,
     },
     util::grid_coords_to_tile_pos,
     GameState, GRID_SIZE,
@@ -324,6 +324,7 @@ fn try_move_player(
     tiles: Query<&TileType>,
     mut grid_coords: Query<&mut GridCoords>,
     mut queued_movements: Query<&mut QueuedMovements>,
+    mut move_count: ResMut<MoveCount>,
 ) {
     for event in move_player_events.iter() {
         let (player_entity, parent) = players.get(event.player).unwrap();
@@ -352,6 +353,7 @@ fn try_move_player(
                         delay: Timer::from_seconds(0., TimerMode::Once),
                     });
             }
+            move_count.0 += 1;
             move_neighboring_players_events.send(TryMoveNeighboringPlayersEvent {
                 grid_coords: level_pos.0,
                 direction: event.direction,

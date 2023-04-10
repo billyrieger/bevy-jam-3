@@ -5,7 +5,6 @@ use bevy::{
     },
     prelude::*,
 };
-use bevy_ecs_ldtk::LdtkLevel;
 use bevy_ecs_tilemap::tiles::TilePos;
 
 pub struct UtilPlugin;
@@ -13,7 +12,7 @@ pub struct UtilPlugin;
 impl Plugin for UtilPlugin {
     fn build(&self, app: &mut App) {
         app.add_event::<DebugEntityEvent>()
-            .add_systems((entity_component_debugger, debug_layers));
+            .add_systems((entity_component_debugger,));
     }
 }
 
@@ -28,18 +27,6 @@ pub struct DebugEntityEvent {
 // =================
 // ==== SYSTEMS ====
 // =================
-
-fn debug_layers(
-    mut events: EventWriter<DebugEntityEvent>,
-    query: Query<(Entity, &Children), Added<Handle<LdtkLevel>>>,
-) {
-    for (entity, children) in &query {
-        events.send(DebugEntityEvent { entity });
-        for &child in children {
-            events.send(DebugEntityEvent { entity: child });
-        }
-    }
-}
 
 fn entity_component_debugger(
     mut events: EventReader<DebugEntityEvent>,

@@ -6,7 +6,7 @@ pub struct MenuPlugin;
 
 impl Plugin for MenuPlugin {
     fn build(&self, app: &mut App) {
-        app.add_system(setup_menu.in_schedule(OnEnter(GameState::MainMenu)))
+        app.add_system(setup_main_menu.in_schedule(OnEnter(GameState::MainMenu)))
             .add_system(cleanup_menu.in_schedule(OnExit(GameState::MainMenu)))
             .add_systems(
                 (hover_buttons, play_button_on_click).in_set(OnUpdate(GameState::MainMenu)),
@@ -22,13 +22,16 @@ impl Plugin for MenuPlugin {
 struct MainMenu;
 
 #[derive(Component)]
+struct TitleText;
+
+#[derive(Component)]
 struct PlayButton;
 
 // =================
 // ==== SYSTEMS ====
 // =================
 
-fn setup_menu(mut commands: Commands, game_assets: Res<GameAssets>) {
+fn setup_main_menu(mut commands: Commands, game_assets: Res<GameAssets>) {
     commands
         .spawn(MainMenu)
         .insert(NodeBundle {
@@ -42,6 +45,14 @@ fn setup_menu(mut commands: Commands, game_assets: Res<GameAssets>) {
             ..default()
         })
         .with_children(|parent| {
+            parent.spawn(TitleText).insert(TextBundle::from_section(
+                "Beside Yourself",
+                TextStyle {
+                    font: game_assets.main_font.clone(),
+                    font_size: 120.,
+                    color: Color::rgb(0.1, 0.1, 0.1),
+                },
+            ));
             parent
                 .spawn(PlayButton)
                 .insert(ButtonBundle {

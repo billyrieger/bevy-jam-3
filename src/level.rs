@@ -17,6 +17,7 @@ impl Plugin for LevelPlugin {
     fn build(&self, app: &mut App) {
         app.add_event::<LoadLevelEvent>()
             .add_event::<ReloadLevelEvent>()
+            .init_resource::<MoveCount>()
             .register_ldtk_int_cell::<FloorBundle>(1)
             .register_ldtk_int_cell::<GoalBundle>(2)
             .register_ldtk_int_cell::<WallBundle>(3)
@@ -153,6 +154,9 @@ impl MetaLevel {
 // ===================
 // ==== RESOURCES ====
 // ===================
+
+#[derive(Resource, Default)]
+pub struct MoveCount(pub i32);
 
 #[derive(Resource)]
 pub struct AllMetaLevels(Vec<MetaLevel>);
@@ -409,11 +413,13 @@ fn load_level(
     mut ldtk_world_query: Query<&mut LevelSet>,
     mut event_reader: EventReader<LoadLevelEvent>,
     mut queued_input: ResMut<QueuedInput>,
+    mut move_count: ResMut<MoveCount>,
 ) {
     if let Some(event) = event_reader.iter().next() {
         commands.remove_resource::<LevelSpawnCountdown>();
         commands.remove_resource::<LevelRespawnCountdown>();
         commands.remove_resource::<Dragging>();
+        move_count.0 = 0;
         queued_input.0.clear();
 
         let mut level_set = ldtk_world_query.single_mut();
